@@ -9,7 +9,7 @@ fn euclidean_distance_squared(tup1: Coords, tup2: Coords)->u64{
     return (tup1.0 + tup2.0).pow(2) as u64 +(tup1.1 + tup2.1).pow(2) as u64;
 }
 
-fn is_goal(best: &(Reverse<u64>, (u32, u32)))->bool{
+fn is_goal(best: &(Reverse<u64>, Coords))->bool{
     /* Something happends */
     return true;
 }
@@ -28,7 +28,7 @@ where Func: Fn(Coords, Coords)->Distance
         let (val, key) = open.pop().unwrap();
         close.insert(key, val.0);
         for /*action to do */{
-            
+
         }
     }
 }
