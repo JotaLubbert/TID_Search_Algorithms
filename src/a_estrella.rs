@@ -8,7 +8,7 @@ type Distance = f64;
 const costo_cardinal: Distance = 1.0;
 const costo_diagonal: Distance = std::f64::consts::SQRT_2;
 
-// recordar, que me pasó que se me olvidó que al ser matriz es +1 hacia abajo y -1 hacia abajo
+// recordar, que me pasó que se me olvidó que al ser matriz es +1 hacia abajo y -1 hacia arriba
 const DIRECTIONS: [(i32, i32, Distance); 8] = [
     (1, 0, costo_cardinal), // abajo
     (-1, 0, costo_cardinal), // arriba
