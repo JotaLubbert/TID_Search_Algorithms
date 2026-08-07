@@ -10,14 +10,14 @@ const costo_diagonal: Distance = std::f64::consts::SQRT_2;
 
 // recordar, que me pasó que se me olvidó que al ser matriz es +1 hacia abajo y -1 hacia abajo
 const DIRECTIONS: [(i32, i32, Distance); 8] = [
-    ( 1,  0, costo_cardinal), // abajo
-    (-1,  0, costo_cardinal), // arriba
-    ( 0, -1, costo_cardinal), // izquierda
-    ( 0,  1, costo_cardinal), // derecha
+    (1, 0, costo_cardinal), // abajo
+    (-1, 0, costo_cardinal), // arriba
+    (0, -1, costo_cardinal), // izquierda
+    (0, 1, costo_cardinal), // derecha
     (-1, -1, costo_diagonal), // diagonal superior-izquierda
-    (-1,  1, costo_diagonal), // diagonal superior-derecha
-    ( 1, -1, costo_diagonal), // diagonal inferior-izquierda
-    ( 1,  1, costo_diagonal), // diagonal inferior-derecha
+    (-1, 1, costo_diagonal), // diagonal superior-derecha
+    (1, -1, costo_diagonal), // diagonal inferior-izquierda
+    (1, 1, costo_diagonal), // diagonal inferior-derecha
 ];
 
 fn euclidean_distance(a: Coords, b: Coords) -> Distance {
