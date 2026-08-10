@@ -39,28 +39,22 @@ where Func: Fn(Coords, Coords) -> Distance, {
     open.push((Reverse(heuristic(start, goal).to_bits()), start));
 
     while let Some((_, best)) = open.pop() {
-        let &(_, best) = open.peek().unwrap();
+        if closed.contains(&best) {
+            continue;
+        }
+
         if best == goal {
-            return None;
-        }
-
-        let (Reverse(g_bits), key) = open.pop().unwrap();
-        let g = Distance::from_bits(g_bits);
-        close.insert(key, g);
-
-        for &(dr, dc, base_cost) in &DIRECTIONS {
-            let nr = key.0 as i32 + dr;
-            let nc = key.1 as i32 + dc;
- 
-            if nr < 0 || nr >= map.len() as i32 || nc < 0 || nc >= map[0].len() as i32 {
-                continue;
+            let mut path = vec![best];
+            let mut cur = best;
+            while let Some(&p) = parent.get(&cur) {
+                path.push(p);
+                cur = p;
             }
-            let child: Coords = (nr as u32, nc as u32);
-
-            if !map[child.0 as usize][child.1 as usize] {
-                continue;
-            }
+            path.reverse();
+            return Some((path, best_g[&best]));
         }
+        closed.insert(best);
+        let g_best = best_g[&best];
     }
 
     None // por si acaso no hay camino aunque no debería pasar
