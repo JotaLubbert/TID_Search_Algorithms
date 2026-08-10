@@ -27,14 +27,18 @@ fn euclidean_distance(a: Coords, b: Coords) -> Distance {
 }
 
 // en teoría, TEORÍA, siempre deberiamos tener los puntos inicial y final, lo digo porque ví tu función de is_goal y no entiendo muy bien que hará xD
-pub fn astar<Func>(start: Coords, goal: Coords, map: &[&[bool]], type_of_distance: Func) -> Option<(Vec<Coords>, Distance)>
-where Func: Fn(Coords, Coords) -> Distance,
-{
+pub fn astar<Func>(start: Coords, goal: Coords, map: &[&[bool]], heuristic: Func) -> Option<(Vec<Coords>, Distance)>
+where Func: Fn(Coords, Coords) -> Distance, {
+    
     let mut open: BinaryHeap<(Reverse<u64>, Coords)> = BinaryHeap::new();
-    let mut close: HashMap<Coords, Distance> = HashMap::new();
-    open.push((Reverse(type_of_distance(start, goal).to_bits()), start));
+    let mut best_g: HashMap<Coords, Distance> = HashMap::new();
+    let mut closed: HashSet<Coords> = HashMap::new();
+    let mut parent: HashMap<Coords, Coords> = HashMap::new();
 
-    while !open.is_empty() {
+    best_g.insert(start, 0.0);    
+    open.push((Reverse(heuristic(start, goal).to_bits()), start));
+
+    while let Some((_, best)) = open.pop() {
         let &(_, best) = open.peek().unwrap();
         if best == goal {
             return None;
