@@ -55,6 +55,14 @@ where Func: Fn(Coords, Coords) -> Distance, {
         }
         closed.insert(best);
         let g_best = best_g[&best];
+
+        for &(dr, dc, base_cost) in &DIRECTIONS {
+            let nr = best.0 as i32 + dr;
+            let nc = best.1 as i32 + dc;
+
+            if nr < 0 || nr >= map.len() as i32 || nc < 0 || nc >= map[0].len() as i32 {
+                continue;
+            }
     }
 
     None // por si acaso no hay camino aunque no debería pasar
