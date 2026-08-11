@@ -80,6 +80,11 @@ where Func: Fn(Coords, Coords) -> Distance, {
                     continue;
                 }
             }
+                
+            best_g.insert(child, g_new);
+            parent.insert(child, best);
+            let f = g_new + heuristic(child, goal);
+            open.push((Reverse(f.to_bits()), child));
         }
     }
     None // por si acaso no hay camino aunque no debería pasar
