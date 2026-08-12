@@ -28,7 +28,7 @@ fn is_in_heap(heap: &BinaryHeap<(Reverse<OrderedFloat<Distance>>, Coords)>, tupl
     return false;
 }
 
-pub fn a_star<Func>(start: Coords, goal: Coords, map:&[&[bool]], type_of_distance: Func)->(Distance, Vec<Coords>)
+pub fn a_star<Func>(start: Coords, goal: Coords, map:&mut[[bool; 512]; 512], type_of_distance: Func)->(Distance, Vec<Coords>)
 where Func: Fn(Coords, Coords)->Distance
 {
     let mut final_cost: f64 = 0.0;
