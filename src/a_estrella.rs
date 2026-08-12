@@ -59,12 +59,11 @@ where Func: Fn(Coords, Coords) -> Distance, {
         for &(dr, dc, base_cost) in &DIRECTIONS {
             let nr = best.0 as i32 + dr;
             let nc = best.1 as i32 + dc;
-
             if nr < 0 || nr >= map.len() as i32 || nc < 0 || nc >= map[0].len() as i32 {
                 continue;
-
+            }
+            
             let child: Coords = (nr as u32, nc as u32);
-    
             if !map[child.0 as usize][child.1 as usize] {
                 continue;
             }
@@ -74,7 +73,6 @@ where Func: Fn(Coords, Coords) -> Distance, {
             }
 
             let g_new = g_best + base_cost;
-
             if let Some(&g_old) = best_g.get(&child) {
                 if g_old <= g_new {
                     continue;
