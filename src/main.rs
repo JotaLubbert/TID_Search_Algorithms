@@ -5,7 +5,7 @@ mod distances_types;
 fn main(){
     let mut array: [[bool; 512]; 512] = [[false; 512]; 512];
     read_map::read_map(&mut array, "test_maps/arena2.map");
-    //print!("{:?}", array[2]);
-    let (dist, cords) = a_star::a_star((0, 0), (5,5), &mut array, distances_types::euclidean_distance);
-    println!("{:?}", dist);
+    //print!("{:?}", array[0]);
+    let res = a_star::a_star((0, 0), (5,5), &mut array, distances_types::euclidean_distance);
+    println!("{:?}", res.unwrap().1);
 }

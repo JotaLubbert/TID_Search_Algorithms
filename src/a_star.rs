@@ -19,56 +19,75 @@ const MOVEMENT_OPTIONS: [(i32, i32, f64); 8] = [
     (1, 1, COSTO_DIAGONAL), // diagonal inferior-derecha
 ];
 
-fn is_in_heap(heap: &BinaryHeap<(Reverse<OrderedFloat<Distance>>, Coords)>, tuple: Coords)->bool{
-    for (_distance, coords) in heap {
-        if *coords == tuple{
-            return true;
-        }
+fn reconstruct_path(came_from: &HashMap<Coords, Coords>, mut current: Coords) -> Vec<Coords> {
+    let mut path = vec![current];
+    while let Some(&prev) = came_from.get(&current) {
+        path.push(prev);
+        current = prev;
     }
-    return false;
+    path.reverse();
+    return path;
 }
 
-pub fn a_star<Func>(start: Coords, goal: Coords, map:&mut[[bool; 512]; 512], type_of_distance: Func)->(Distance, Vec<Coords>)
+pub fn a_star<Func>(start: Coords, goal: Coords, map:&mut[[bool; 512]; 512], type_of_distance: Func)->Option<(Distance, Vec<Coords>)>
 where Func: Fn(Coords, Coords)->Distance
 {
-    let mut final_cost: f64 = 0.0;
+    if !map[start.1 as usize][start.0 as usize]{
+        return None;
+    }
     let mut open: BinaryHeap<(Reverse<OrderedFloat<Distance>>, Coords)> = BinaryHeap::new();
     let mut close: HashMap<Coords, Distance> = HashMap::new();
-    let mut f_score = type_of_distance(start, goal);
+    let mut g_score: HashMap<Coords, Distance> = HashMap::new();
+    let mut path: HashMap<Coords, Coords> = HashMap::new();
+    g_score.insert(start, 0.0);
+    let f_score = type_of_distance(start, goal);
     open.push((Reverse(OrderedFloat(f_score)), start));
-    let mut path = vec![];
-    while !open.is_empty() {
-        let (val, best)  = open.pop().unwrap();
-        if best == goal{
-            return (final_cost, path);
+
+    while let Some((Reverse(OrderedFloat(f)), current)) = open.pop() {
+        let current_g = g_score[&current];
+
+        let current_f = current_g + type_of_distance(current, goal);
+        if f > current_f {
+            continue;
         }
-        let val = val.0;
-        close.insert(best, val.0);
+
+        if current == goal{
+           return Some((current_g, reconstruct_path(&path, current)));
+        }
+
+        close.insert(current, current_g);
         for (x, y, cost) in MOVEMENT_OPTIONS{
-            let can_operate_x = best.0 > 0 || x != -1;
-            let can_operate_y = best.1 > 0 || y != -1;
+            let can_operate_x = current.0 > 0 || x != -1;
+            let can_operate_y = current.1 > 0 || y != -1;
             if !can_operate_x || !can_operate_y{
                 continue;
             }
-            let search_x = (best.0 as i32 + x) as u32;
-            let search_y = (best.1 as i32 + y) as u32;
-            let can_go_there = !map[search_y as usize][search_x as usize];
+            let search_x = (current.0 as i32 + x) as u32;
+            let search_y = (current.1 as i32 + y) as u32;
+            if search_x as usize >= 512 || search_y as usize >= 512 {
+                continue;
+            }
+            let can_go_there = map[search_y as usize][search_x as usize];
             if !can_go_there {
                 continue;
             }
-            let tuple_search = (search_x, search_y);
-            let cost_in_node = final_cost + cost;
-            if close.contains_key(&tuple_search) || is_in_heap(&open, tuple_search){
-                if final_cost <= cost_in_node{
+
+            let neighbor = (search_x, search_y);
+            let tentative_g = current_g + cost;
+            if let Some(&closed_g) = close.get(&neighbor){
+                if closed_g <= tentative_g{
                     continue;
                 }
-                
+                close.remove(&neighbor);
             }
-            final_cost += cost;
-            f_score = final_cost + type_of_distance(tuple_search, goal);
-            open.push((Reverse(OrderedFloat(f_score)), tuple_search));
-            path.push(tuple_search);
+            let existing_g = g_score.get(&neighbor).copied().unwrap_or(f64::INFINITY);
+            if tentative_g < existing_g {
+                path.insert(neighbor, current);
+                g_score.insert(neighbor, tentative_g);
+                let f_neighbor = tentative_g + type_of_distance(neighbor, goal);
+                open.push((Reverse(OrderedFloat(f_neighbor)), neighbor));
+            }
         }
     }
-    return (final_cost, path);
+    return None;
 }
