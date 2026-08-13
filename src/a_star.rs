@@ -29,9 +29,11 @@ fn reconstruct_path(came_from: &HashMap<Coords, Coords>, mut current: Coords) ->
     return path;
 }
 
-pub fn a_star<Func>(start: Coords, goal: Coords, map:&mut[[bool; 512]; 512], type_of_distance: Func)->Option<(Distance, Vec<Coords>)>
+pub fn a_star<Func>(start: Coords, goal: Coords, map:&Vec<Vec<bool>>, type_of_distance: Func)->Option<(Distance, Vec<Coords>)>
 where Func: Fn(Coords, Coords)->Distance
 {
+    let y_size = map.len();
+    let x_size = map[0].len();
     if !map[start.1 as usize][start.0 as usize]{
         return None;
     }
@@ -64,7 +66,7 @@ where Func: Fn(Coords, Coords)->Distance
             }
             let search_x = (current.0 as i32 + x) as u32;
             let search_y = (current.1 as i32 + y) as u32;
-            if search_x as usize >= 512 || search_y as usize >= 512 {
+            if search_x as usize >= x_size || search_y as usize >= y_size {
                 continue;
             }
             let can_go_there = map[search_y as usize][search_x as usize];

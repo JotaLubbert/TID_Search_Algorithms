@@ -10,15 +10,16 @@ fn read_lines(path:&str)-> Vec<String>{
         .collect()  // gather them together into a vector
 }
 
-pub fn read_map(arr:&mut[[bool; 512]; 512], file_directory: &str){
+pub fn read_map(arr:&mut Vec<Vec<bool>>, file_directory: &str){
     let lines: Vec<String> = read_lines(file_directory);
     for (line, text) in lines.iter().enumerate() {
         if line < 4{
             continue;
         }
-        for (index, characters) in text.chars().enumerate(){
+        arr.push(vec![]);
+        for (_index, characters) in text.chars().enumerate(){
             let ascii =  characters as u8;
-            arr[line-4][index] = is_travesable(ascii);
+            arr[line-4].push(is_travesable(ascii));
         }
     }
 }
