@@ -1,23 +1,24 @@
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 type Coords = (u32, u32);
 type Distance = f64;
 
-const costo_cardinal: Distance = 1.0;
-const costo_diagonal: Distance = std::f64::consts::SQRT_2;
+const COSTO_CARDINAL: Distance = 1.0;
+const COSTO_DIAGONAL: Distance = std::f64::consts::SQRT_2;
 
 // recordar, que me pasó que se me olvidó que al ser matriz es +1 hacia abajo y -1 hacia arriba
 const DIRECTIONS: [(i32, i32, Distance); 8] = [
-    (1, 0, costo_cardinal), // abajo
-    (-1, 0, costo_cardinal), // arriba
-    (0, -1, costo_cardinal), // izquierda
-    (0, 1, costo_cardinal), // derecha
-    (-1, -1, costo_diagonal), // diagonal superior-izquierda
-    (-1, 1, costo_diagonal), // diagonal superior-derecha
-    (1, -1, costo_diagonal), // diagonal inferior-izquierda
-    (1, 1, costo_diagonal), // diagonal inferior-derecha
+    (1, 0, COSTO_CARDINAL), // abajo
+    (-1, 0, COSTO_CARDINAL), // arriba
+    (0, -1, COSTO_CARDINAL), // izquierda
+    (0, 1, COSTO_CARDINAL), // derecha
+    (-1, -1, COSTO_DIAGONAL), // diagonal superior-izquierda
+    (-1, 1, COSTO_DIAGONAL), // diagonal superior-derecha
+    (1, -1, COSTO_DIAGONAL), // diagonal inferior-izquierda
+    (1, 1, COSTO_DIAGONAL), // diagonal inferior-derecha
 ];
 
 fn euclidean_distance(a: Coords, b: Coords) -> Distance {
@@ -32,7 +33,7 @@ where Func: Fn(Coords, Coords) -> Distance, {
     
     let mut open: BinaryHeap<(Reverse<u64>, Coords)> = BinaryHeap::new();
     let mut best_g: HashMap<Coords, Distance> = HashMap::new();
-    let mut closed: HashSet<Coords> = HashMap::new();
+    let mut closed: HashSet<Coords> = HashSet::new();
     let mut parent: HashMap<Coords, Coords> = HashMap::new();
 
     best_g.insert(start, 0.0);    
