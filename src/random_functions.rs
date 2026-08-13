@@ -18,12 +18,12 @@ fn search_valid_coords(map: &Vec<Vec<bool>>, k_points: u32)->Vec<(u32, u32)>{
 }
 
 pub fn test_astar(map:&Vec<Vec<bool>>, test_atempts: usize)->Vec<(u128, Vec<(u32, u32)>)>{
-    let test_coords = search_valid_coords(map, 15);
+    //let test_coords = search_valid_coords(map, 15);
     let mut end_test:Vec<(u128, Vec<(u32, u32)>)> = Vec::with_capacity(test_atempts);
     for _ in 0..test_atempts{
-        let start = test_coords[(rand::rng().random::<u32>() % 15) as usize];
-        let goal = test_coords[(rand::rng().random::<u32>() % 15) as usize];
-        println!("Start: {:?}\nGoal{:?}", start, goal);
+        let start = (148, 125);
+        let goal = (232, 162);
+        println!("Start: {:?}\nGoal: {:?}", start, goal);
         let star_time = Instant::now();
         let path = a_star(start, goal, map, distances_types::euclidean_distance);
         let finish = star_time.elapsed();
