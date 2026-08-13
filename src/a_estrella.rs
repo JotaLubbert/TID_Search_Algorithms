@@ -28,7 +28,7 @@ fn euclidean_distance(a: Coords, b: Coords) -> Distance {
 }
 
 // en teoría, TEORÍA, siempre deberiamos tener los puntos inicial y final, lo digo porque ví tu función de is_goal y no entiendo muy bien que hará xD
-pub fn astar<Func>(start: Coords, goal: Coords, map: &[&[bool]], heuristic: Func) -> Option<(Vec<Coords>, Distance)>
+pub fn astar<Func>(start: Coords, goal: Coords, map: &[[bool; 512]; 512], heuristic: Func) -> Option<(Vec<Coords>, Distance)>
 where Func: Fn(Coords, Coords) -> Distance, {
     
     let mut open: BinaryHeap<(Reverse<u64>, Coords)> = BinaryHeap::new();
