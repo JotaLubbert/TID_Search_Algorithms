@@ -13,5 +13,13 @@ fn main(){
         println!("Time: {}ms", time);
         println!("path: ");
         println!("{:?}", path);
+        
+    //let res = a_estrella::astar((107, 76), (171, 140), &array, distances_types::euclidean_distance);
+    //match res {
+    //    Some((path, cost)) => {
+    //        println!("costo de a_estrella: {}", cost);
+    //        println!("path de a_estrella: {:?}", path);
+    //    }
+    //    None => println!("a_estrella: sin camino")
     }
 }
