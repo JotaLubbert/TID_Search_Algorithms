@@ -19,6 +19,11 @@ const MOVEMENT_OPTIONS: [(i32, i32, f64); 8] = [
     (1, 1, COSTO_DIAGONAL), // diagonal inferior-derecha
 ];
 
+
+// Se usa un almacenamiento de los padres y se actualizan
+// Crear estructura de search node
+// por lo general se usan arrays
+
 fn reconstruct_path(came_from: &HashMap<Coords, Coords>, mut current: Coords) -> Vec<Coords> {
     let mut path = vec![current];
     while let Some(&prev) = came_from.get(&current) {
@@ -27,6 +32,30 @@ fn reconstruct_path(came_from: &HashMap<Coords, Coords>, mut current: Coords) ->
     }
     path.reverse();
     return path;
+}
+
+fn valid_succesors(current_coords: Coords, map:&mut[[bool; 512]; 512])->(Vec<Coords>, Vec<f64>){
+    let mut posible_moves: Vec<Coords> = vec![];
+    let mut movement_cost: Vec<f64> = vec![];
+    for (x, y, cost) in MOVEMENT_OPTIONS{
+        let can_operate_x = current_coords.0 > 0 || x != -1;
+        let can_operate_y = current_coords.1 > 0 || y != -1;
+        if !can_operate_x || !can_operate_y{
+            continue;
+        }
+        let search_x = (current_coords.0 as i32 + x) as u32;
+        let search_y = (current_coords.1 as i32 + y) as u32;
+        if search_x as usize >= 512 || search_y as usize >= 512 {
+            continue;
+        }
+        let can_go_there = map[search_y as usize][search_x as usize];
+        if !can_go_there {
+            continue;
+        }
+        posible_moves.push((search_x, search_y));
+        movement_cost.push(cost);
+    }
+    return (posible_moves, movement_cost);
 }
 
 pub fn a_star<Func>(start: Coords, goal: Coords, map:&mut[[bool; 512]; 512], type_of_distance: Func)->Option<(Distance, Vec<Coords>)>
@@ -56,24 +85,11 @@ where Func: Fn(Coords, Coords)->Distance
         }
 
         close.insert(current, current_g);
-        for (x, y, cost) in MOVEMENT_OPTIONS{
-            let can_operate_x = current.0 > 0 || x != -1;
-            let can_operate_y = current.1 > 0 || y != -1;
-            if !can_operate_x || !can_operate_y{
-                continue;
-            }
-            let search_x = (current.0 as i32 + x) as u32;
-            let search_y = (current.1 as i32 + y) as u32;
-            if search_x as usize >= 512 || search_y as usize >= 512 {
-                continue;
-            }
-            let can_go_there = map[search_y as usize][search_x as usize];
-            if !can_go_there {
-                continue;
-            }
 
-            let neighbor = (search_x, search_y);
-            let tentative_g = current_g + cost;
+        let (position_succesor, weight) = valid_succesors(current, map);
+        for ((search_x, search_y), cost) in position_succesor.iter().zip(weight.iter()){
+            let neighbor = (*search_x, *search_y);
+            let tentative_g = current_g + *cost;
             if let Some(&closed_g) = close.get(&neighbor){
                 if closed_g <= tentative_g{
                     continue;

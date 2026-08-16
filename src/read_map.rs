@@ -1,6 +1,6 @@
 use std::fs::read_to_string;
 pub fn is_travesable(c: u8)->bool{
-    return matches!(c, b'.' | b'G'); //El caracter 'S' tabién es traversable, pero es pantano, hay que ver que se hace
+    return matches!(c, b'.' | b'G' | b'S');
 }
 
 fn read_lines(path:&str)-> Vec<String>{

@@ -22,7 +22,7 @@ pub fn test_astar(map:&mut[[bool; 512]; 512], test_atempts: usize)->Vec<(u128, V
         let start = test_coords[(rand::rng().random::<u32>() % 15) as usize];
         let goal = test_coords[(rand::rng().random::<u32>() % 15) as usize];
         let star_time = Instant::now();
-        let path =a_star(start, goal, map, distances_types::euclidean_distance);
+        let path = a_star(start, goal, map, distances_types::euclidean_distance);
         let finish = star_time.elapsed();
         let path = path.unwrap().1;
         end_test.push((finish.as_millis(), path));
