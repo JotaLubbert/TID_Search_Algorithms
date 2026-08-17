@@ -24,6 +24,17 @@ const MOVEMENT_OPTIONS: [(i32, i32, f64); 8] = [
 // Crear estructura de search node
 // por lo general se usan arrays
 
+#[derive(Clone, Copy, Debug)]
+struct SearchNode {
+    g: Distance,
+    #[allow(dead_code)]
+    h: Distance,
+    #[allow(dead_code)]
+    f: Distance,
+    parent: Option<Coords>,
+}
+
+
 fn reconstruct_path(came_from: &HashMap<Coords, Coords>, mut current: Coords) -> Vec<Coords> {
     let mut path = vec![current];
     while let Some(&prev) = came_from.get(&current) {
