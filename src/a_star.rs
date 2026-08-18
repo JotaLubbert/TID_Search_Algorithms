@@ -76,6 +76,7 @@ where Func: Fn(Coords, Coords)->Distance
         return None;
     }
     let mut open: BinaryHeap<(Reverse<OrderedFloat<Distance>>, Coords)> = BinaryHeap::new();
+    let mut node: HashMap<Coords, SearchNode> = HashMap::new();
     let mut close: HashMap<Coords, Distance> = HashMap::new();
     let mut g_score: HashMap<Coords, Distance> = HashMap::new();
     let mut path: HashMap<Coords, Coords> = HashMap::new();
