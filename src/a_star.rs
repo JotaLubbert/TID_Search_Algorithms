@@ -26,23 +26,28 @@ const MOVEMENT_OPTIONS: [(i32, i32, f64); 8] = [
 
 #[derive(Clone, Copy, Debug)]
 struct SearchNode {
-    g: Distance,
+    pub g: Distance,
     #[allow(dead_code)]
-    h: Distance,
+    pub h: Distance,
     #[allow(dead_code)]
-    f: Distance,
-    parent: Option<Coords>,
+    pub f: Distance,
+    pub parent: Option<Coords>,
+}
+impl SearchNode {
+    pub fn new(g: f64, h: f64, f: f64, parent: Option<(u32, u32)>)->Self{
+        Self{g, h, f, parent}
+    }
 }
 
 
-fn reconstruct_path(came_from: &HashMap<Coords, Coords>, mut current: Coords) -> Vec<Coords> {
+fn reconstruct_path(node: &HashMap<Coords, SearchNode>, mut current: Coords) -> Vec<Coords> {
     let mut path = vec![current];
-    while let Some(&prev) = came_from.get(&current) {
-        path.push(prev);
-        current = prev;
+    while let Some(parent) = node[&current].parent {
+        path.push(parent);
+        current = parent;
     }
     path.reverse();
-    return path;
+    path
 }
 
 fn valid_succesors(current_coords: Coords, map:&mut[[bool; 512]; 512])->(Vec<Coords>, Vec<f64>){
@@ -69,50 +74,54 @@ fn valid_succesors(current_coords: Coords, map:&mut[[bool; 512]; 512])->(Vec<Coo
     return (posible_moves, movement_cost);
 }
 
-pub fn a_star<Func>(start: Coords, goal: Coords, map:&mut[[bool; 512]; 512], type_of_distance: Func)->Option<(Distance, Vec<Coords>)>
-where Func: Fn(Coords, Coords)->Distance
+pub fn a_star<Func>(start: Coords, goal: Coords, map: &mut [[bool; 512]; 512], type_of_distance: Func) -> Option<(Distance, Vec<Coords>)>
+where Func: Fn(Coords, Coords) -> Distance
 {
-    if !map[start.1 as usize][start.0 as usize]{
+    if !map[start.1 as usize][start.0 as usize] {
         return None;
     }
+
     let mut open: BinaryHeap<(Reverse<OrderedFloat<Distance>>, Coords)> = BinaryHeap::new();
     let mut node: HashMap<Coords, SearchNode> = HashMap::new();
     let mut close: HashMap<Coords, Distance> = HashMap::new();
-    let mut g_score: HashMap<Coords, Distance> = HashMap::new();
-    let mut path: HashMap<Coords, Coords> = HashMap::new();
-    g_score.insert(start, 0.0);
-    let f_score = type_of_distance(start, goal);
-    open.push((Reverse(OrderedFloat(f_score)), start));
+
+    let h_start = type_of_distance(start, goal);
+    node.insert(start, SearchNode::new(0.0, h_start, h_start, None));
+    open.push((Reverse(OrderedFloat(h_start)), start));
 
     while let Some((Reverse(OrderedFloat(f)), current)) = open.pop() {
-        let current_g = g_score[&current];
+        let current_g = node[&current].g;
 
         let current_f = current_g + type_of_distance(current, goal);
         if f > current_f {
             continue;
         }
 
-        if current == goal{
-           return Some((current_g, reconstruct_path(&path, current)));
+        if current == goal {
+            return Some((current_g, reconstruct_path(&node, current)));
         }
 
         close.insert(current, current_g);
 
         let (position_succesor, weight) = valid_succesors(current, map);
-        for ((search_x, search_y), cost) in position_succesor.iter().zip(weight.iter()){
+        for ((search_x, search_y), cost) in position_succesor.iter().zip(weight.iter()) {
             let neighbor = (*search_x, *search_y);
             let tentative_g = current_g + *cost;
-            if let Some(&closed_g) = close.get(&neighbor){
-                if closed_g <= tentative_g{
+
+            if let Some(&closed_g) = close.get(&neighbor) {
+                if closed_g <= tentative_g {
                     continue;
                 }
                 close.remove(&neighbor);
             }
-            let existing_g = g_score.get(&neighbor).copied().unwrap_or(f64::INFINITY);
+
+            // ojo: default a infinito si el nodo nunca fue visitado
+            let existing_g = node.get(&neighbor).map(|n| n.g).unwrap_or(f64::INFINITY);
+
             if tentative_g < existing_g {
-                path.insert(neighbor, current);
-                g_score.insert(neighbor, tentative_g);
-                let f_neighbor = tentative_g + type_of_distance(neighbor, goal);
+                let h = type_of_distance(neighbor, goal);
+                let f_neighbor = tentative_g + h;
+                node.insert(neighbor, SearchNode::new(tentative_g, h, f_neighbor, Some(current)));
                 open.push((Reverse(OrderedFloat(f_neighbor)), neighbor));
             }
         }
