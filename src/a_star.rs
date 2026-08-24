@@ -75,6 +75,11 @@ fn valid_succesors(current_coords: Coords, map:&mut[[bool; 512]; 512])->(Vec<Coo
         if !can_go_there {
             continue;
         }
+        if x != 0 && y != 0{
+            if !map[(search_y as i32 - y) as usize][search_x as usize] && !map[search_y as usize][(search_x as i32 - x) as usize]{
+                continue;
+            }
+        }
         posible_moves.push((search_x, search_y));
         movement_cost.push(cost);
     }
