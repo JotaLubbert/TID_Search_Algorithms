@@ -23,7 +23,7 @@ const MOVEMENT_OPTIONS: [(i32, i32, f64); 8] = [
 // Se usa un almacenamiento de los padres y se actualizan
 // Crear estructura de search node
 // por lo general se usan arrays
-
+/*
 #[derive(Clone, Copy, Debug)]
 struct SearchNode {
     g: Distance,
@@ -32,6 +32,18 @@ struct SearchNode {
     #[allow(dead_code)]
     f: Distance,
     parent: Option<Coords>,
+}
+*/
+
+fn show_open_close_size(open: &BinaryHeap<(Reverse<OrderedFloat<Distance>>, Coords)>, close: &HashMap<Coords, Distance>){
+    let open_entry_size = size_of::<(Reverse<OrderedFloat<Distance>>, Coords)>();
+    let close_entry_size = size_of::<(Coords, Distance)>(); // key + value aproximado
+
+    let total_open_size = open.capacity() * open_entry_size;
+    let total_close_size = close.capacity() * close_entry_size;
+
+    println!("Tamaño del open: {} bytes ({} entradas, capacidad {})", total_open_size, open.len(), open.capacity());
+    println!("Tamaño del close: {} bytes ({} entradas, capacidad {})", total_close_size, close.len(), close.capacity()); // Aproximación del tamaño de la memoria utilizada por el HashMap
 }
 
 
@@ -85,14 +97,19 @@ where Func: Fn(Coords, Coords)->Distance
 
     while let Some((Reverse(OrderedFloat(f)), current)) = open.pop() {
         let current_g = g_score[&current];
+        //mostrar las expanciones
+
 
         let current_f = current_g + type_of_distance(current, goal);
         if f > current_f {
+            // Si entra a la linea 91
             continue;
         }
 
         if current == goal{
-           return Some((current_g, reconstruct_path(&path, current)));
+            // mostrar tamaño del open y close en bytes
+            show_open_close_size(&open, &close);
+            return Some((current_g, reconstruct_path(&path, current)));
         }
 
         close.insert(current, current_g);
@@ -103,6 +120,7 @@ where Func: Fn(Coords, Coords)->Distance
             let tentative_g = current_g + *cost;
             if let Some(&closed_g) = close.get(&neighbor){
                 if closed_g <= tentative_g{
+                    // También entra a la linea 107. no son redundantes.
                     continue;
                 }
                 close.remove(&neighbor);
@@ -113,6 +131,8 @@ where Func: Fn(Coords, Coords)->Distance
                 g_score.insert(neighbor, tentative_g);
                 let f_neighbor = tentative_g + type_of_distance(neighbor, goal);
                 open.push((Reverse(OrderedFloat(f_neighbor)), neighbor));
+                // mostrar estados generados por el for.
+
             }
         }
     }
