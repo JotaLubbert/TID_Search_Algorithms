@@ -39,6 +39,16 @@ impl SearchNode {
     }
 }
 
+fn show_open_close_size(open: &BinaryHeap<(Reverse<OrderedFloat<Distance>>, Coords)>, close: &HashMap<Coords, SearchNode>) {
+    let open_entry_size = size_of::<(Reverse<OrderedFloat<Distance>>, Coords)>();
+    let close_entry_size = size_of::<(Coords, SearchNode)>(); // key + value aproximado
+
+    let total_open_size = open.capacity() * open_entry_size;
+    let total_close_size = close.capacity() * close_entry_size;
+
+    println!("Tamaño del open: {} bytes ({} entradas, capacidad {})", total_open_size, open.len(), open.capacity());
+    println!("Tamaño del close: {} bytes ({} entradas, capacidad {})", total_close_size, close.len(), close.capacity()); // Aproximación del tamaño de la memoria utilizada por el HashMap
+}
 
 fn reconstruct_path(node: &HashMap<Coords, SearchNode>, mut current: Coords) -> Vec<Coords> {
     let mut path = vec![current];
@@ -80,28 +90,29 @@ where Func: Fn(Coords, Coords) -> Distance
     if !map[start.1 as usize][start.0 as usize] {
         return None;
     }
-
+    
     let mut open: BinaryHeap<(Reverse<OrderedFloat<Distance>>, Coords)> = BinaryHeap::new();
     let mut close: HashMap<Coords, SearchNode> = HashMap::new();
-
+    
     let h_start = type_of_distance(start, goal);
     close.insert(start, SearchNode::new(0.0, h_start, h_start, None));
     open.push((Reverse(OrderedFloat(h_start)), start));
-
+    
     let mut expansions: u64 = 0;
-
+    
     while let Some((Reverse(OrderedFloat(f)), current)) = open.pop() {
         let current_g = close[&current].g;
-
+        
         let current_f = current_g + type_of_distance(current, goal);
         if f > current_f {
             continue;
         }
-
+        
         expansions += 1;
         println!("Expansión #{}: nodo {:?}, g={:.2}, f={:.2}", expansions, current, current_g, current_f);
-
+        
         if current == goal {
+            println!("Tamaño de un SearchNode: {} bytes", size_of::<SearchNode>());
             show_open_close_size(&open, &close);
             return Some((current_g, reconstruct_path(&close, current)));
         }
