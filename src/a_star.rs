@@ -112,7 +112,6 @@ where Func: Fn(Coords, Coords) -> Distance
         println!("Expansión #{}: nodo {:?}, g={:.2}, f={:.2}", expansions, current, current_g, current_f);
         
         if current == goal {
-            println!("Tamaño de un SearchNode: {} bytes", size_of::<SearchNode>());
             show_open_close_size(&open, &close);
             return Some((current_g, reconstruct_path(&close, current)));
         }
