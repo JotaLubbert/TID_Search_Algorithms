@@ -82,47 +82,47 @@ where Func: Fn(Coords, Coords) -> Distance
     }
 
     let mut open: BinaryHeap<(Reverse<OrderedFloat<Distance>>, Coords)> = BinaryHeap::new();
-    let mut node: HashMap<Coords, SearchNode> = HashMap::new();
-    let mut close: HashMap<Coords, Distance> = HashMap::new();
+    let mut close: HashMap<Coords, SearchNode> = HashMap::new();
 
     let h_start = type_of_distance(start, goal);
-    node.insert(start, SearchNode::new(0.0, h_start, h_start, None));
+    close.insert(start, SearchNode::new(0.0, h_start, h_start, None));
     open.push((Reverse(OrderedFloat(h_start)), start));
 
+    let mut expansions: u64 = 0;
+
     while let Some((Reverse(OrderedFloat(f)), current)) = open.pop() {
-        let current_g = node[&current].g;
+        let current_g = close[&current].g;
 
         let current_f = current_g + type_of_distance(current, goal);
         if f > current_f {
             continue;
         }
 
+        expansions += 1;
+        println!("Expansión #{}: nodo {:?}, g={:.2}, f={:.2}", expansions, current, current_g, current_f);
+
         if current == goal {
-            return Some((current_g, reconstruct_path(&node, current)));
+            show_open_close_size(&open, &close);
+            return Some((current_g, reconstruct_path(&close, current)));
         }
 
-        close.insert(current, current_g);
-
         let (position_succesor, weight) = valid_succesors(current, map);
+
+        let mut generated: u64 = 0;
         for ((search_x, search_y), cost) in position_succesor.iter().zip(weight.iter()) {
             let neighbor = (*search_x, *search_y);
             let tentative_g = current_g + *cost;
 
-            if let Some(&closed_g) = close.get(&neighbor) {
-                if closed_g <= tentative_g {
-                    continue;
-                }
-                close.remove(&neighbor);
-            }
-
-            // ojo: default a infinito si el nodo nunca fue visitado
-            let existing_g = node.get(&neighbor).map(|n| n.g).unwrap_or(f64::INFINITY);
+            let existing_g = close.get(&neighbor).map(|n| n.g).unwrap_or(f64::INFINITY);
 
             if tentative_g < existing_g {
                 let h = type_of_distance(neighbor, goal);
                 let f_neighbor = tentative_g + h;
-                node.insert(neighbor, SearchNode::new(tentative_g, h, f_neighbor, Some(current)));
+                close.insert(neighbor, SearchNode::new(tentative_g, h, f_neighbor, Some(current)));
                 open.push((Reverse(OrderedFloat(f_neighbor)), neighbor));
+
+                generated += 1;
+                println!("  Estado generado #{}: {:?}, g={:.2}, f={:.2}", generated, neighbor, tentative_g, f_neighbor);
             }
         }
     }
