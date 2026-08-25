@@ -116,7 +116,7 @@ where Func: Fn(Coords, Coords)->Distance
 
         if current == goal{
             // mostrar tamaño del open y close en bytes
-            show_open_close_size(&open, &close);
+            // show_open_close_size(&open, &close);
             return Some((current_g, reconstruct_path(&path, current)));
         }
 
