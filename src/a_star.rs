@@ -100,16 +100,19 @@ where Func: Fn(Coords, Coords)->Distance
     let f_score = type_of_distance(start, goal);
     open.push((Reverse(OrderedFloat(f_score)), start));
 
+    let mut expansions: u64 = 0;
+
     while let Some((Reverse(OrderedFloat(f)), current)) = open.pop() {
         let current_g = g_score[&current];
-        //mostrar las expanciones
-
-
         let current_f = current_g + type_of_distance(current, goal);
         if f > current_f {
             // Si entra a la linea 91
             continue;
         }
+        
+        //mostrar las expanciones
+        expansions += 1;
+        println!("Expansión #{}: nodo {:?}, g={:.2}, f={:.2}", expansions, current, current_g, current_f);
 
         if current == goal{
             // mostrar tamaño del open y close en bytes
@@ -120,6 +123,9 @@ where Func: Fn(Coords, Coords)->Distance
         close.insert(current, current_g);
 
         let (position_succesor, weight) = valid_succesors(current, map);
+
+        let mut generated: u64 = 0;
+        
         for ((search_x, search_y), cost) in position_succesor.iter().zip(weight.iter()){
             let neighbor = (*search_x, *search_y);
             let tentative_g = current_g + *cost;
@@ -136,8 +142,10 @@ where Func: Fn(Coords, Coords)->Distance
                 g_score.insert(neighbor, tentative_g);
                 let f_neighbor = tentative_g + type_of_distance(neighbor, goal);
                 open.push((Reverse(OrderedFloat(f_neighbor)), neighbor));
+                
                 // mostrar estados generados por el for.
-
+                generated += 1;
+                println!("  Estado generado #{}: {:?}, g={:.2}, f={:.2}", generated, neighbor, tentative_g, f_neighbor);
             }
         }
     }
