@@ -20,21 +20,6 @@ const MOVEMENT_OPTIONS: [(i32, i32, f64); 8] = [
 ];
 
 
-// Se usa un almacenamiento de los padres y se actualizan
-// Crear estructura de search node
-// por lo general se usan arrays
-/*
-#[derive(Clone, Copy, Debug)]
-struct SearchNode {
-    g: Distance,
-    #[allow(dead_code)]
-    h: Distance,
-    #[allow(dead_code)]
-    f: Distance,
-    parent: Option<Coords>,
-}
-*/
-
 fn show_open_close_size(open: &BinaryHeap<(Reverse<OrderedFloat<Distance>>, Coords)>, close: &HashMap<Coords, Distance>){
     let open_entry_size = size_of::<(Reverse<OrderedFloat<Distance>>, Coords)>();
     let close_entry_size = size_of::<(Coords, Distance)>(); // key + value aproximado
@@ -101,7 +86,7 @@ where Func: Fn(Coords, Coords)->Distance
     open.push((Reverse(OrderedFloat(f_score)), start));
 
     let mut expansions: u64 = 0;
-
+    // Reverse y OrderedFloats son solo wrapers para que la función funcione, no añaden complejidad adicional.
     while let Some((Reverse(OrderedFloat(f)), current)) = open.pop() {
         let current_g = g_score[&current];
         let current_f = current_g + type_of_distance(current, goal);
@@ -126,10 +111,9 @@ where Func: Fn(Coords, Coords)->Distance
 
         let mut generated: u64 = 0;
         
-        for ((search_x, search_y), cost) in position_succesor.iter().zip(weight.iter()){
-            let neighbor = (*search_x, *search_y);
+        for (neighbor, cost) in position_succesor.iter().zip(weight.iter()){
             let tentative_g = current_g + *cost;
-            if let Some(&closed_g) = close.get(&neighbor){
+            if let Some(&closed_g) = close.get(neighbor){
                 if closed_g <= tentative_g{
                     // También entra a la linea 107. no son redundantes.
                     continue;
@@ -138,10 +122,10 @@ where Func: Fn(Coords, Coords)->Distance
             }
             let existing_g = g_score.get(&neighbor).copied().unwrap_or(f64::INFINITY);
             if tentative_g < existing_g {
-                path.insert(neighbor, current);
-                g_score.insert(neighbor, tentative_g);
-                let f_neighbor = tentative_g + type_of_distance(neighbor, goal);
-                open.push((Reverse(OrderedFloat(f_neighbor)), neighbor));
+                path.insert(*neighbor, current);
+                g_score.insert(*neighbor, tentative_g);
+                let f_neighbor = tentative_g + type_of_distance(*neighbor, goal);
+                open.push((Reverse(OrderedFloat(f_neighbor)), *neighbor));
                 
                 // mostrar estados generados por el for.
                 generated += 1;
