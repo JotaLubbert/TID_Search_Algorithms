@@ -110,10 +110,11 @@ where Func: Fn(Coords, Coords) -> Distance
         
         expansions += 1;
         println!("Expansión #{}: nodo {:?}, g={:.2}, f={:.2}", expansions, current, current_g, current_f);
-        
-        if current == goal {
-            show_open_close_size(&open, &close);
-            return Some((current_g, reconstruct_path(&close, current)));
+
+        if current == goal{
+            // mostrar tamaño del open y close en bytes
+            // show_open_close_size(&open, &close);
+            return Some((current_g, reconstruct_path(&path, current)));
         }
 
         let (position_succesor, weight) = valid_succesors(current, map);
