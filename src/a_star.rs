@@ -119,17 +119,16 @@ where Func: Fn(Coords, Coords) -> Distance
         let (position_succesor, weight) = valid_succesors(current, map);
 
         let mut generated: u64 = 0;
-        for ((search_x, search_y), cost) in position_succesor.iter().zip(weight.iter()) {
-            let neighbor = (*search_x, *search_y);
+        for (neighbor, cost) in position_succesor.iter().zip(weight.iter()) {
             let tentative_g = current_g + *cost;
 
-            let existing_g = close.get(&neighbor).map(|n| n.g).unwrap_or(f64::INFINITY);
+            let existing_g = close.get(neighbor).map(|n| n.g).unwrap_or(f64::INFINITY);
 
             if tentative_g < existing_g {
-                let h = type_of_distance(neighbor, goal);
+                let h = type_of_distance(*neighbor, goal);
                 let f_neighbor = tentative_g + h;
-                close.insert(neighbor, SearchNode::new(tentative_g, h, f_neighbor, Some(current)));
-                open.push((Reverse(OrderedFloat(f_neighbor)), neighbor));
+                close.insert(*neighbor, SearchNode::new(tentative_g, h, f_neighbor, Some(current)));
+                open.push((Reverse(OrderedFloat(f_neighbor)), *neighbor));
 
                 generated += 1;
                 println!("  Estado generado #{}: {:?}, g={:.2}, f={:.2}", generated, neighbor, tentative_g, f_neighbor);
