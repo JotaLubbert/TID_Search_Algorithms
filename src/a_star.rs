@@ -25,7 +25,7 @@ const MOVEMENT_OPTIONS: [(i32, i32, f64); 8] = [
 // por lo general se usan arrays
 
 #[derive(Clone, Copy, Debug)]
-struct SearchNode {
+pub struct SearchNode {
     pub g: Distance,
     #[allow(dead_code)]
     pub h: Distance,
@@ -84,7 +84,13 @@ fn valid_succesors(current_coords: Coords, map:&mut[[bool; 512]; 512])->(Vec<Coo
     return (posible_moves, movement_cost);
 }
 
-pub fn a_star<Func>(start: Coords, goal: Coords, map: &mut [[bool; 512]; 512], type_of_distance: Func) -> Option<(Distance, Vec<Coords>)>
+pub fn a_star<Func>(start: Coords, goal: Coords, map: &mut [[bool; 512]; 512], type_of_distance: Func)
+    -> Option<(
+        Distance,
+        Vec<Coords>,
+        BinaryHeap<(Reverse<OrderedFloat<Distance>>, Coords)>,
+        HashMap<Coords, SearchNode>
+    )>
 where Func: Fn(Coords, Coords) -> Distance
 {
     if !map[start.1 as usize][start.0 as usize] {
@@ -114,7 +120,7 @@ where Func: Fn(Coords, Coords) -> Distance
         if current == goal{
             // mostrar tamaño del open y close en bytes
             // show_open_close_size(&open, &close);
-            return Some((current_g, reconstruct_path(&close, current)));
+            return Some((current_g, reconstruct_path(&close, current), open, close));
         }
 
         let (position_succesor, weight) = valid_succesors(current, map);
