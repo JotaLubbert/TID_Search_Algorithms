@@ -3,7 +3,7 @@ use imageproc::drawing::draw_line_segment_mut;
 use std::collections::{BinaryHeap, HashMap};
 use std::cmp::Reverse;
 use ordered_float::OrderedFloat;
-use crate::a_star::SearchNode;
+//use crate::a_star::SearchNode;
 type Coords = (u32, u32);
 type Distance = f64;
 
@@ -20,7 +20,7 @@ const GRID_COLOR: Rgb<u8>  = Rgb([210, 210, 210]); // gris clarito para la grill
 pub fn visualize_final_state(
     map: &[[bool; 512]; 512],
     open: &BinaryHeap<(Reverse<OrderedFloat<Distance>>, Coords)>,
-    close: &HashMap<Coords, SearchNode>,
+    close: &HashMap<Coords, Distance>,
     start: Coords,
     goal: Coords,
     path: &[Coords],
