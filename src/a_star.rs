@@ -71,7 +71,13 @@ fn valid_succesors(current_coords: Coords, map:&mut[[bool; 512]; 512])->(Vec<Coo
     return (posible_moves, movement_cost);
 }
 
-pub fn a_star<Func>(start: Coords, goal: Coords, map:&mut[[bool; 512]; 512], type_of_distance: Func)->Option<(Distance, Vec<Coords>)>
+pub fn a_star<Func>(start: Coords, goal: Coords, map:&mut[[bool; 512]; 512], type_of_distance: Func)
+    -> Option<(
+        Distance,
+        Vec<Coords>,
+        BinaryHeap<(Reverse<OrderedFloat<Distance>>, Coords)>,
+        HashMap<Coords, Distance>
+    )>
 where Func: Fn(Coords, Coords)->Distance
 {
     if !map[start.1 as usize][start.0 as usize]{
