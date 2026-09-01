@@ -33,7 +33,7 @@ pub fn test_all_valid_points(map:&mut[[bool; 512]; 512])->Vec<(u128, Vec<(u32, u
 }
 
 pub fn test_visualizer(map:&mut[[bool; 512]; 512]){
-    let start= (0, 0); let goal = (4, 1);
+    let start= (79, 144); let goal = (244, 78);
     let (_total_distance, path, open, close) = a_star(start, goal, map, distances_types::euclidean_distance).unwrap();
     map_visualization::visualize_final_state(map, &open, &close, start, goal, &path, 4, "generated_output/hi.png");
 }
