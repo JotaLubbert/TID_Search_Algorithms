@@ -25,14 +25,14 @@ const MOVEMENT_OPTIONS: [(i32, i32, f64); 8] = [
 pub struct SearchNode {
     pub coords: Coords,
     pub g: Distance,
-    pub h: Distance,
+    pub _h: Distance,
     pub f: Distance,
     pub parent: Option<Coords>,
 }
 impl SearchNode {
     //El nodo ahora tiene está en el heap, por lo que necesita sus coordenadas, f es cambiado por g + h
     pub fn new(coords: Coords, g: f64, h: f64, parent: Option<Coords>) -> Self {
-        Self { coords, g, h, f: g + h, parent }
+        Self { coords, g, _h: h, f: g + h, parent }
     }
 }
 //Implementación del ord, el ord permite decidir la prioridad de los nofos
@@ -45,6 +45,15 @@ impl PartialOrd for SearchNode {
 }
 impl Ord for SearchNode {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering { self.f.total_cmp(&other.f) }
+}
+
+pub struct AStarResults{
+    pub final_dis: Distance,
+    pub path: Vec<Coords>,
+    pub open: BinaryHeap<Reverse<SearchNode>>,
+    pub close: HashMap<Coords, SearchNode>,
+    pub expansions: u64,
+    pub generated: u64,
 }
 
 fn reconstruct_path(close: &HashMap<Coords, SearchNode>, mut current: Coords) -> Vec<Coords> {
@@ -97,12 +106,9 @@ pub fn a_star<Func>(
     goal: Coords,
     map: &CustomMap,
     type_of_distance: Func,
-) -> Option<(
-    Distance,
-    Vec<Coords>,
-    BinaryHeap<Reverse<SearchNode>>,
-    HashMap<Coords, SearchNode>,
-)>
+) -> Option<
+    AStarResults
+>
 where Func: Fn(Coords, Coords) -> Distance
 {
     if !map[start.1 as usize][start.0 as usize] {
@@ -117,7 +123,8 @@ where Func: Fn(Coords, Coords) -> Distance
     let start_node = SearchNode::new(start, 0.0, h_start, None);
     close.insert(start, start_node);
     open.push(Reverse(start_node));
-
+    let mut expansions: u64 = 0;
+    let mut generated: u64 = 0;
     while let Some(Reverse(current)) = open.pop() {
         
         let current_g = close[&current.coords].g;
@@ -125,11 +132,17 @@ where Func: Fn(Coords, Coords) -> Distance
         if current.g > current_g {
             continue;
         }
-
+        expansions += 1;
         if current.coords == goal {
             // mostrar tamaño del open y close en bytes
             // show_open_close_size(&open, &close);
-            return Some((current_g, reconstruct_path(&close, current.coords), open, close));
+            return Some(AStarResults{final_dis: current_g,
+                path: reconstruct_path(&close, current.coords),
+                open: open, close: close,
+                expansions: expansions,
+                generated: generated
+
+            });
         }
 
         let (position_succesor, weight) = valid_succesors(current.coords, map);
@@ -143,6 +156,7 @@ where Func: Fn(Coords, Coords) -> Distance
                 let neighbor_node = SearchNode::new(*neighbor, tentative_g, h, Some(current.coords));
                 close.insert(*neighbor, neighbor_node);
                 open.push(Reverse(neighbor_node));
+                expansions += 1;
             }
         }
     }
