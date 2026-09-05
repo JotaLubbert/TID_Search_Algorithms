@@ -21,10 +21,18 @@ pub fn read_lines(path:&str)-> Vec<String>{
         .collect()  // gather them together into a vector
 }
 
-pub fn read_map(arr:&mut CustomMap, file_directory: &str){
+pub fn read_map(arr:&mut CustomMap, file_directory: &str)->(u32, u32){
     let lines: Vec<String> = read_lines(file_directory);
+    let mut height: u32 = 0;
+    let mut width: u32 = 0;
     for (line, text) in lines.iter().enumerate() {
-        if line < 4{
+        if line == 1 {
+            height = text[7..].parse::<u32>().unwrap();
+            continue;
+        } else if line == 2{
+            width = text[6..].parse::<u32>().unwrap();
+            continue;
+        } else if line < 4{
             continue;
         }
         for (index, characters) in text.chars().enumerate(){
@@ -32,6 +40,7 @@ pub fn read_map(arr:&mut CustomMap, file_directory: &str){
             arr[line-4][index] = is_travesable(ascii);
         }
     }
+    return (height, width);
 }
 
 pub fn decode_scen(line: String)->MapStats{

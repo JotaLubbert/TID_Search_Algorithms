@@ -17,7 +17,9 @@ const PATH_COLOR: Rgb<u8>  = Rgb([255, 200, 0]);
 const GRID_COLOR: Rgb<u8>  = Rgb([210, 210, 210]);
 
 pub fn visualize_final_state(
-    map: & CustomMap,
+    map: &CustomMap,
+    map_width: u32,   // ancho real del mapa (columnas)
+    map_height: u32,  // alto real del mapa (filas)
     open: &BinaryHeap<Reverse<SearchNode>>,
     close: &HashMap<Coords, SearchNode>,
     start: Coords,
@@ -27,9 +29,9 @@ pub fn visualize_final_state(
     output_path: &str,
 ) {
     let path_thickness = 1;
-    let grid_size = 512u32;
-    let img_size = grid_size * scale;
-    let mut img = RgbImage::new(img_size, img_size);
+    let img_width = map_width * scale;
+    let img_height = map_height * scale;
+    let mut img = RgbImage::new(img_width, img_height);
 
     let mut fill_cell = |img: &mut RgbImage, coord: Coords, color: Rgb<u8>| {
         let (cx, cy) = coord;
@@ -40,9 +42,9 @@ pub fn visualize_final_state(
         }
     };
 
-    // 1. base: transitable / bloqueado
-    for y in 0..grid_size {
-        for x in 0..grid_size {
+    // 1. base: transitable / bloqueado — recorre solo el área real del mapa
+    for y in 0..map_height {
+        for x in 0..map_width {
             let color = if map[y as usize][x as usize] { TRANSITABLE } else { BLOQUEADO };
             fill_cell(&mut img, (x, y), color);
         }
@@ -62,9 +64,8 @@ pub fn visualize_final_state(
     fill_cell(&mut img, start, START_COLOR);
     fill_cell(&mut img, goal, GOAL_COLOR);
 
-    // 4. grilla — se dibuja DESPUÉS de los colores de fondo, pero ANTES del path,
-    // así el path queda por encima de las líneas de grilla, no tapado por ellas    
-    draw_grid(&mut img, grid_size, scale);
+    // 4. grilla ajustada al tamaño real
+    draw_grid(&mut img, map_width, map_height, scale);
 
     // 5. línea del camino final, con grosor
     draw_thick_path(&mut img, path, scale, path_thickness, PATH_COLOR);
@@ -73,18 +74,26 @@ pub fn visualize_final_state(
 }
 
 /// Dibuja líneas horizontales y verticales cada `scale` pixeles,
-/// marcando el borde de cada celda del grid original.
-fn draw_grid(img: &mut RgbImage, grid_size: u32, scale: u32) {
-    let img_size = (grid_size * scale) as f32;
-    for i in 0..=grid_size {
+/// marcando el borde de cada celda, ajustado al ancho/alto reales.
+fn draw_grid(img: &mut RgbImage, map_width: u32, map_height: u32, scale: u32) {
+    let img_width = (map_width * scale) as f32;
+    let img_height = (map_height * scale) as f32;
+
+    // líneas verticales (recorren todo el alto)
+    for i in 0..=map_width {
         let pos = (i * scale) as f32;
-        draw_line_segment_mut(img, (pos, 0.0), (pos, img_size), GRID_COLOR);
-        draw_line_segment_mut(img, (0.0, pos), (img_size, pos), GRID_COLOR);
+        draw_line_segment_mut(img, (pos, 0.0), (pos, img_height), GRID_COLOR);
+    }
+
+    // líneas horizontales (recorren todo el ancho)
+    for i in 0..=map_height {
+        let pos = (i * scale) as f32;
+        draw_line_segment_mut(img, (0.0, pos), (img_width, pos), GRID_COLOR);
     }
 }
 
-/// Dibuja el camino como una línea gruesa, trazando múltiples líneas
-/// paralelas desplazadas perpendicularmente al segmento original.
+/// Dibuja el camino como una línea gruesa (sin cambios respecto a la versión anterior,
+/// no depende del tamaño del mapa)
 fn draw_thick_path(img: &mut RgbImage, path: &[Coords], scale: u32, thickness: u32, color: Rgb<u8>) {
     let half = scale as f32 / 2.0;
     let half_thickness = thickness as f32 / 2.0;
@@ -95,25 +104,18 @@ fn draw_thick_path(img: &mut RgbImage, path: &[Coords], scale: u32, thickness: u
         let p1 = ((x1 * scale) as f32 + half, (y1 * scale) as f32 + half);
         let p2 = ((x2 * scale) as f32 + half, (y2 * scale) as f32 + half);
 
-        // vector perpendicular al segmento, normalizado
         let dx = p2.0 - p1.0;
         let dy = p2.1 - p1.1;
         let len = (dx * dx + dy * dy).sqrt().max(0.001);
         let perp_x = -dy / len;
         let perp_y = dx / len;
 
-        // dibujamos varias líneas paralelas desplazadas a lo largo de la perpendicular
         let steps = thickness.max(1);
         for i in 0..steps {
             let offset = -half_thickness + i as f32;
             let ox = perp_x * offset;
             let oy = perp_y * offset;
-            draw_line_segment_mut(
-                img,
-                (p1.0 + ox, p1.1 + oy),
-                (p2.0 + ox, p2.1 + oy),
-                color,
-            );
+            draw_line_segment_mut(img, (p1.0 + ox, p1.1 + oy), (p2.0 + ox, p2.1 + oy), color);
         }
     }
 }

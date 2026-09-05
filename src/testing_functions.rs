@@ -32,11 +32,11 @@ pub fn test_all_valid_points(map:&mut CustomMap)->Vec<(u128, Vec<(u32, u32)>)>{
     return end_test;
 }
 
-pub fn test_visualizer(map:&mut CustomMap){
-    let start= (79, 144); let goal = (244, 78);
-    let (_total_distance, path, open, close) = a_star(start, goal, map, distances_types::euclidean_distance).unwrap();
-    map_visualization::visualize_final_state(map, &open, &close, start, goal, &path, 4, "generated_output/hi.png");
-}
+// pub fn test_visualizer(map:&mut CustomMap){
+//     let start= (79, 144); let goal = (244, 78);
+//     let (_total_distance, path, open, close) = a_star(start, goal, map, distances_types::euclidean_distance).unwrap();
+//     map_visualization::visualize_final_state(map, &open, &close, start, goal, &path, 4, "generated_output/hi.png");
+// }
 
 pub fn dummy(map:&mut CustomMap, map_stats: MapStats)->bool{
     let (final_distance, _ , _, _ ) = a_star(map_stats.start,
@@ -71,7 +71,7 @@ pub fn test_astar_correctnes(map:&mut CustomMap){
 
         let map_dir = format!("maps/{}", maptowork);
         let data_in_dir = format!("test_data/{}", data_dir);
-        read_map(map, &map_dir);
+        let (height, width) = read_map(map, &map_dir);
         println!("=>>{}", data_dir);
         let data = read_lines(&data_in_dir);
         let mut first_line = true;
@@ -103,6 +103,7 @@ pub fn test_astar_correctnes(map:&mut CustomMap){
             );
             map_visualization::visualize_final_state(
                 map,
+                width, height,
                 &open, &close,
                 stats.start, stats.goal,
                 &path,
