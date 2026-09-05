@@ -69,17 +69,27 @@ fn valid_succesors(current_coords: Coords, map: &CustomMap) -> (Vec<Coords>, Vec
         }
         let search_x = (current_coords.0 as i32 + x) as u32;
         let search_y = (current_coords.1 as i32 + y) as u32;
-        if search_x as usize >= map[0].len() || search_y as usize >= map.len() {
+        if search_x as usize >= 512 || search_y as usize >= 512 {
             continue;
         }
-        if !map[search_y as usize][search_x as usize] {
+        let can_go_there = map[search_y as usize][search_x as usize];
+        if !can_go_there {
             continue;
+        }
+        //evita el corner curring
+        if x != 0 && y != 0 {
+            if !map[(search_y as i32 - y) as usize][search_x as usize]
+                && !map[search_y as usize][(search_x as i32 - x) as usize]
+            {
+                continue;
+            }
         }
         posible_moves.push((search_x, search_y));
         movement_cost.push(cost);
     }
-    return (posible_moves, movement_cost)
+    return (posible_moves, movement_cost);
 }
+
 
 //Lo mismo, no necesita mutabilidad
 pub fn a_star<Func>(
