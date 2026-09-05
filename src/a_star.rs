@@ -79,7 +79,7 @@ fn valid_succesors(current_coords: Coords, map: &CustomMap) -> (Vec<Coords>, Vec
         //evita el corner cutting
         if x != 0 && y != 0 {
             if !map[(search_y as i32 - y) as usize][search_x as usize]
-                && !map[search_y as usize][(search_x as i32 - x) as usize]
+                && !map[search_y as usize][(search_x as i32 - x) as usize] //hay que revisar esto
             {
                 continue;
             }
