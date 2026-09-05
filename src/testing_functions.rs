@@ -1,6 +1,6 @@
 use std::time::Instant;
 use rand::{self, RngExt};
-use crate::{a_star::a_star, distances_types, map_visualization, search_functions::{search_all_valid_coords, search_valid_coords}};
+use crate::{a_star::a_star, distances_types::{self, euclidean_distance}, map_visualization, read_files::MapStats, search_functions::{search_all_valid_coords, search_valid_coords}};
 
 pub fn test_astar(map:&mut[[bool; 512]; 512], test_atempts: usize)->Vec<(u128, Vec<(u32, u32)>)>{
     let test_coords = search_valid_coords(map, 15);
@@ -36,4 +36,17 @@ pub fn test_visualizer(map:&mut[[bool; 512]; 512]){
     let start= (79, 144); let goal = (244, 78);
     let (_total_distance, path, open, close) = a_star(start, goal, map, distances_types::euclidean_distance).unwrap();
     map_visualization::visualize_final_state(map, &open, &close, start, goal, &path, 4, "generated_output/hi.png");
+}
+
+pub fn test_astar_correctnes(map:&mut[[bool; 512]; 512], map_stats: MapStats)->bool{
+    let final_distance = a_star(map_stats.start,
+        map_stats.goal,
+        map,
+        euclidean_distance
+    ).unwrap();
+    let final_distance = final_distance.0;
+    if final_distance == map_stats.distance {
+        return true;
+    }
+    return false;
 }
