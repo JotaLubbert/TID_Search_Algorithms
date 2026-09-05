@@ -8,9 +8,9 @@ mod write_files;
 mod distances_types;
 mod map_visualization;
 
-type CustomMap = [[bool; 1024]; 1024];
+type CustomMap = [[bool; 2048]; 2048];
 fn main() {
-    let mut array: CustomMap = [[false; 1024]; 1024];
+    let mut array: CustomMap = [[false; 2048]; 2048];
     // read_files::read_map(&mut array, "maps/arena2.map");
     // let star_time = Instant::now();
     // let _ = testing_functions::test_visualizer(&mut array);

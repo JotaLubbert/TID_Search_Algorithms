@@ -69,7 +69,7 @@ fn valid_succesors(current_coords: Coords, map: &CustomMap) -> (Vec<Coords>, Vec
         }
         let search_x = (current_coords.0 as i32 + x) as u32;
         let search_y = (current_coords.1 as i32 + y) as u32;
-        if search_x as usize >= 1024 || search_y as usize >= 1024 {
+        if search_x as usize >= map[0].len() || search_y as usize >= map.len() {
             continue;
         }
         if !map[search_y as usize][search_x as usize] {
@@ -85,7 +85,7 @@ fn valid_succesors(current_coords: Coords, map: &CustomMap) -> (Vec<Coords>, Vec
 pub fn a_star<Func>(
     start: Coords,
     goal: Coords,
-    map: &[[bool; 1024]; 1024],
+    map: &CustomMap,
     type_of_distance: Func,
 ) -> Option<(
     Distance,

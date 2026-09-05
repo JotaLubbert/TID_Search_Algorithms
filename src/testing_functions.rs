@@ -94,6 +94,7 @@ pub fn test_astar_correctnes(map:&mut CustomMap){
                 stats.distance,
                 final_distance
             );
+            /*
             let ouput_path = format!("generated_output/{}-{}_{}-{}_{}.png",
                 &data_dir,
                 stats.start.0,
@@ -110,6 +111,7 @@ pub fn test_astar_correctnes(map:&mut CustomMap){
                 4,
                 &ouput_path
             );
+            */
         }
     }
 }
