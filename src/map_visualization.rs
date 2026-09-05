@@ -2,6 +2,7 @@ use image::{RgbImage, Rgb};
 use imageproc::drawing::draw_line_segment_mut;
 use std::collections::{BinaryHeap, HashMap};
 use std::cmp::Reverse;
+use crate::CustomMap;
 use crate::a_star::SearchNode;
 type Coords = (u32, u32);
 type Distance = f64;
@@ -16,7 +17,7 @@ const PATH_COLOR: Rgb<u8>  = Rgb([255, 200, 0]);
 const GRID_COLOR: Rgb<u8>  = Rgb([210, 210, 210]);
 
 pub fn visualize_final_state(
-    map: &[[bool; 512]; 512],
+    map: & CustomMap,
     open: &BinaryHeap<Reverse<SearchNode>>,
     close: &HashMap<Coords, SearchNode>,
     start: Coords,

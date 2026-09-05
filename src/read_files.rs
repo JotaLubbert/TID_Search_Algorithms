@@ -1,6 +1,8 @@
 use std::{collections::HashSet, fs::read_to_string, io::SeekFrom::Start, os::linux::raw::stat};
 use rand::distr::Map;
 use std::fs;
+
+use crate::CustomMap;
 #[derive(Clone, Copy, Debug)]
 pub struct MapStats{
     pub start: (u32, u32),
@@ -19,7 +21,7 @@ pub fn read_lines(path:&str)-> Vec<String>{
         .collect()  // gather them together into a vector
 }
 
-pub fn read_map(arr:&mut[[bool; 512]; 512], file_directory: &str){
+pub fn read_map(arr:&mut CustomMap, file_directory: &str){
     let lines: Vec<String> = read_lines(file_directory);
     for (line, text) in lines.iter().enumerate() {
         if line < 4{

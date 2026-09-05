@@ -2,7 +2,9 @@ use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::collections::HashMap;
 
-type Coords = (u32, u32);
+use crate::CustomMap;
+
+pub type Coords = (u32, u32);
 type Distance = f64;
 
 const COSTO_CARDINAL: f64 = 1.0;
@@ -56,7 +58,7 @@ fn reconstruct_path(close: &HashMap<Coords, SearchNode>, mut current: Coords) ->
 }
 
 //Ahora no recibe el mapa como mutable, no cambia
-fn valid_succesors(current_coords: Coords, map: &[[bool; 512]; 512]) -> (Vec<Coords>, Vec<f64>) {
+fn valid_succesors(current_coords: Coords, map: &CustomMap) -> (Vec<Coords>, Vec<f64>) {
     let mut posible_moves: Vec<Coords> = vec![];
     let mut movement_cost: Vec<f64> = vec![];
     for (x, y, cost) in MOVEMENT_OPTIONS {
@@ -67,7 +69,7 @@ fn valid_succesors(current_coords: Coords, map: &[[bool; 512]; 512]) -> (Vec<Coo
         }
         let search_x = (current_coords.0 as i32 + x) as u32;
         let search_y = (current_coords.1 as i32 + y) as u32;
-        if search_x as usize >= 512 || search_y as usize >= 512 {
+        if search_x as usize >= 1024 || search_y as usize >= 1024 {
             continue;
         }
         if !map[search_y as usize][search_x as usize] {
@@ -83,7 +85,7 @@ fn valid_succesors(current_coords: Coords, map: &[[bool; 512]; 512]) -> (Vec<Coo
 pub fn a_star<Func>(
     start: Coords,
     goal: Coords,
-    map: &[[bool; 512]; 512],
+    map: &[[bool; 1024]; 1024],
     type_of_distance: Func,
 ) -> Option<(
     Distance,
