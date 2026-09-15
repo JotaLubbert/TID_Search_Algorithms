@@ -1,6 +1,7 @@
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::collections::HashMap;
+use std::mem::{align_of, size_of};
 
 use crate::CustomMap;
 
@@ -50,10 +51,62 @@ impl Ord for SearchNode {
 pub struct AStarResults{
     pub final_dis: Distance,
     pub path: Vec<Coords>,
-    pub open: BinaryHeap<Reverse<SearchNode>>,
-    pub close: HashMap<Coords, SearchNode>,
+    //el open y el close ya no se devuelven completos, solo lo que ocupan en memoria
+    pub open_bytes: usize,
+    pub close_bytes: usize,
     pub expansions: u64,
     pub generated: u64,
+}
+
+//Ancho del grupo que usa hashbrown (la tabla detrás de HashMap) para escanear
+//control bytes. Depende de la arquitectura, así que replicamos su misma
+//selección de cfg: SSE2 en x86 escanea de a 16, NEON en aarch64 de a 8
+//(uint8x8_t) y el resto cae al fallback genérico, que escanea de a un usize.
+const GROUP_WIDTH: usize =
+    if cfg!(all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        target_feature = "sse2",
+    )) {
+        16
+    } else if cfg!(all(
+        target_arch = "aarch64",
+        target_feature = "neon",
+        //hashbrown evita NEON en big-endian porque los intrínsecos fallan ahí
+        target_endian = "little",
+    )) {
+        8
+    } else {
+        size_of::<usize>()
+    };
+
+//size_of_val no sirve acá: solo mide el struct en el stack y el buffer del heap
+//queda fuera, que es justamente lo que crece durante la búsqueda.
+fn open_size_in_bytes(open: &BinaryHeap<Reverse<SearchNode>>) -> usize {
+    size_of::<BinaryHeap<Reverse<SearchNode>>>()
+        + open.capacity() * size_of::<Reverse<SearchNode>>()
+}
+
+//hashbrown reserva una potencia de 2 de buckets y mantiene ocupación máxima de 7/8
+fn buckets_for(capacity: usize) -> usize {
+    if capacity < 8 {
+        if capacity < 4 { 4 } else { 8 }
+    } else {
+        (capacity * 8 / 7).next_power_of_two()
+    }
+}
+
+fn close_size_in_bytes(close: &HashMap<Coords, SearchNode>) -> usize {
+    let base = size_of::<HashMap<Coords, SearchNode>>();
+    if close.capacity() == 0 {
+        //un mapa sin capacidad todavía no pide memoria al allocator
+        return base;
+    }
+    let buckets = buckets_for(close.capacity());
+    let entry = size_of::<(Coords, SearchNode)>();
+    //los bytes de control van después del arreglo de entradas, realineados
+    let ctrl_align = align_of::<(Coords, SearchNode)>().max(GROUP_WIDTH);
+    let ctrl_offset = (buckets * entry).next_multiple_of(ctrl_align);
+    base + ctrl_offset + buckets + GROUP_WIDTH
 }
 
 fn reconstruct_path(close: &HashMap<Coords, SearchNode>, mut current: Coords) -> Vec<Coords> {
@@ -134,11 +187,10 @@ where Func: Fn(Coords, Coords) -> Distance
         }
         expansions += 1;
         if current.coords == goal {
-            // mostrar tamaño del open y close en bytes
-            // show_open_close_size(&open, &close);
             return Some(AStarResults{final_dis: current_g,
                 path: reconstruct_path(&close, current.coords),
-                open: open, close: close,
+                open_bytes: open_size_in_bytes(&open),
+                close_bytes: close_size_in_bytes(&close),
                 expansions: expansions,
                 generated: generated
 
@@ -155,8 +207,8 @@ where Func: Fn(Coords, Coords) -> Distance
                 let h = type_of_distance(*neighbor, goal);
                 let neighbor_node = SearchNode::new(*neighbor, tentative_g, h, Some(current.coords));
                 close.insert(*neighbor, neighbor_node);
+                generated += 1;
                 open.push(Reverse(neighbor_node));
-                expansions += 1;
             }
         }
     }

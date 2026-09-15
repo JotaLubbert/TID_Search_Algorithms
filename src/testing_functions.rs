@@ -65,19 +65,22 @@ pub fn test_astar_correctnes(map:&mut CustomMap){
                 continue;
             }
             let stats = decode_scen(line);
+            let star_time = Instant::now();
             let astar_data = a_star(
                 stats.start,
                 stats.goal,
                 map,
                 euclidean_distance
             ).unwrap();
+            let finish = star_time.elapsed().as_micros();
             let file_name = scen_files.clone();
             write_files::create_stat_file(
                 file_name,
                 stats.start,
                 stats.goal,
                 stats.distance,
-                astar_data.final_dis
+                &astar_data,
+                finish
             );
             /*
             let ouput_path = format!("generated_output/{}-{}_{}-{}_{}.png",
