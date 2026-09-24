@@ -56,6 +56,7 @@ pub fn test_astar_correctnes(map:&mut CustomMap){
 
         let map_dir = format!("maps/{}", maptowork);
         let data_in_dir = format!("test_data/{}", scen_files);
+        *map = [[false; 2048]; 2048];
         let (height, width) = read_map(map, &map_dir);
         let data = read_lines(&data_in_dir);
         let mut first_line = true;

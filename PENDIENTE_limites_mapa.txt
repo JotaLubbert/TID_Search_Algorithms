@@ -1,0 +1,69 @@
+PENDIENTE: ajustar los límites del mapa en A* (bug detectado en la validación)
+Fecha: 23/09/2026 · Rama: manhattan-recorrido-nodo (commit ab7b2b8)
+No se incluye en el informe de avance por ahora; corregir el código después.
+
+
+SÍNTOMA
+-------
+En la validación con los .scen de Moving AI coinciden 155.614 de 155.620
+escenarios. Los 6 que no coinciden son todos de brc501d.map, y en todos el A*
+entrega un costo MENOR que el óptimo de referencia (eso no puede pasar si el
+mapa está bien representado):
+
+  inicio (x, y)   meta (x, y)   esperado       obtenido
+  (218, 273)      (176,  35)    264.18376617   261.78174593
+  (218, 275)      (153,  23)    286.53910522   285.30865787
+  (124, 129)      (220, 276)    362.56349182   359.09040380
+  (101, 144)      (224, 273)    389.84776306   378.96046148
+  (224, 264)      (106, 156)    404.09040375   380.47518011
+  (221, 273)      (121, 199)    447.64675293   441.00209204
+
+Los 6 caminos pasan por la columna x = 225, pero brc501d mide 225 de ancho
+(x válidos: 0..224). O sea, el camino se sale del mapa.
+
+
+CAUSA
+-----
+1. main.rs crea una sola matriz CustomMap = [[bool; 2048]; 2048] y la reutiliza
+   para todos los mapas.
+2. read_files::read_map solo sobrescribe las celdas que están dentro del alto y
+   ancho del mapa actual. El resto de la matriz conserva lo que dejó el mapa
+   que se leyó antes.
+3. a_star::valid_succesors revisa los límites con map[0].len() y map.len()
+   (o sea, 2048), no con el ancho y el alto reales. Por eso el A* puede entrar
+   a celdas "fantasma" que quedaron transitables de un mapa anterior.
+4. El orden en que se leen los mapas sale de un HashSet (read_folders), así que
+   cambia entre ejecuciones: el bug puede aparecer en otros mapas, o no
+   aparecer, según qué mapa se haya leído antes.
+
+
+CÓMO CORREGIRLO (cualquiera sirve; la opción b es la más robusta)
+-----------------------------------------------------------------
+a) Limpiar la matriz (todo en false) antes de leer cada mapa.
+b) Pasar el ancho y el alto reales (read_map ya los devuelve) a a_star y a
+   valid_succesors, y revisar los límites contra esos valores.
+c) Guardar el mapa en un Vec<bool> de tamaño ancho * alto, indexado por
+   y * ancho + x. Además ahorra memoria: la matriz fija ocupa 4 MiB aunque el
+   mapa sea chico (el más chico, ost102d, tiene 22 x 28 = 616 celdas).
+
+
+DESPUÉS DE CORREGIR
+-------------------
+- Borrar los .tsv de test_result/ antes de volver a correr: create_stat_file
+  agrega filas al final si el archivo ya existe, así que se mezclarían los
+  resultados nuevos con los viejos.
+- Volver a correr test_astar_correctnes y confirmar que coinciden los 155.620
+  escenarios.
+- Actualizar la cifra de validación en el informe de avance
+  (hoy dice 155.614 de 155.620, o sea 99,996 %).
+
+
+OTRAS COSAS QUE SE VIERON AL REVISAR
+------------------------------------
+- El comentario "hay que revisar esto, si es o un Y" en valid_succesors: el ||
+  está bien. Con || la diagonal solo se permite si las dos celdas cardinales
+  adyacentes están libres, que es la regla de Moving AI (sin corner cutting).
+  La validación lo confirma: con && saldrían muchos costos menores al óptimo.
+- search_functions.rs todavía usa 512 fijo (search_valid_coords y
+  search_all_valid_coords). No afecta la validación actual, pero habría que usar
+  el tamaño real del mapa si se vuelven a usar esas funciones.
