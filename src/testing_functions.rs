@@ -85,7 +85,7 @@ pub fn test_astar_correctnes(map:&mut CustomMap){
             );
             /*
             let ouput_path = format!("generated_output/{}-{}_{}-{}_{}.png",
-                &data_dir,
+                &scen_files,
                 stats.start.0,
                 stats.start.1,
                 stats.goal.0,
@@ -94,9 +94,9 @@ pub fn test_astar_correctnes(map:&mut CustomMap){
             map_visualization::visualize_final_state(
                 map,
                 width, height,
-                &open, &close,
+                &astar_data.open, &astar_data.close,
                 stats.start, stats.goal,
-                &path,
+                &astar_data.path,
                 4,
                 &ouput_path
             );

@@ -7,7 +7,7 @@ use crate::CustomMap;
 
 pub type Coords = (u32, u32);
 type Distance = f64;
-
+type OpenType = BinaryHeap<Reverse<SearchNode>>;
 const COSTO_CARDINAL: f64 = 1.0;
 const COSTO_DIAGONAL: f64 = std::f64::consts::SQRT_2;
 
@@ -52,7 +52,9 @@ pub struct AStarResults{
     pub final_dis: Distance,
     pub path: Vec<Coords>,
     //el open y el close ya no se devuelven completos, solo lo que ocupan en memoria
+    pub open: OpenType,
     pub open_bytes: usize,
+    pub close: HashMap<Coords, SearchNode>,
     pub close_bytes: usize,
     pub expansions: u64,
     pub generated: u64,
@@ -168,7 +170,7 @@ where Func: Fn(Coords, Coords) -> Distance
         return None;
     }
 
-    let mut open: BinaryHeap<Reverse<SearchNode>> = BinaryHeap::new();
+    let mut open: OpenType = BinaryHeap::new();
     //El heap ahora contiene nodos y no tuplas
     let mut close: HashMap<Coords, SearchNode> = HashMap::new();
 
@@ -187,13 +189,19 @@ where Func: Fn(Coords, Coords) -> Distance
         }
         expansions += 1;
         if current.coords == goal {
-            return Some(AStarResults{final_dis: current_g,
-                path: reconstruct_path(&close, current.coords),
-                open_bytes: open_size_in_bytes(&open),
-                close_bytes: close_size_in_bytes(&close),
-                expansions: expansions,
-                generated: generated
-
+            //se calcula todo lo que pide prestado open y close antes de moverlos al resultado
+            let path = reconstruct_path(&close, current.coords);
+            let open_bytes = open_size_in_bytes(&open);
+            let close_bytes = close_size_in_bytes(&close);
+            return Some(AStarResults{
+                final_dis: current_g,
+                path,
+                open,
+                open_bytes,
+                close,
+                close_bytes,
+                expansions,
+                generated,
             });
         }
 
