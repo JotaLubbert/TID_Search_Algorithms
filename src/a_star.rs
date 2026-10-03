@@ -47,11 +47,11 @@ impl Ord for SearchNode {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering { self.f.total_cmp(&other.f) }
 }
 
-pub struct AStarResults<O: OpenList>{
+pub struct AStarResults<Open: OpenList>{
     pub final_dis: Distance,
     pub path: Vec<Coords>,
     //el open y el close ya no se devuelven completos, solo lo que ocupan en memoria
-    pub open: O,
+    pub open: Open,
     pub open_bytes: usize,
     pub close: HashMap<Coords, SearchNode>,
     pub close_bytes: usize,
@@ -148,24 +148,24 @@ fn valid_succesors(current_coords: Coords, map: &CustomMap) -> (Vec<Coords>, Vec
 
 
 //Lo mismo, no necesita mutabilidad
-//O es la estructura de la open, se elige al llamar: a_star::<BinaryHeapOpen, _>(...)
-pub fn a_star<O, Func>(
+//Open es la estructura de la open, se elige al llamar: a_star::<BinaryHeapOpen, _>(...)
+pub fn a_star<Open, Func>(
     start: Coords,
     goal: Coords,
     map: &CustomMap,
     type_of_distance: Func,
 ) -> Option<
-    AStarResults<O>
+    AStarResults<Open>
 >
 where
-    O: OpenList,
+    Open: OpenList,
     Func: Fn(Coords, Coords) -> Distance,
 {
     if !map[start.1 as usize][start.0 as usize] {
         return None;
     }
 
-    let mut open = O::default();
+    let mut open = Open::default();
     //La open ahora contiene nodos y no tuplas
     let mut close: HashMap<Coords, SearchNode> = HashMap::new();
 
