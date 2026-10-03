@@ -1,6 +1,6 @@
 use std::{time::Instant};
 use rand::{self, RngExt};
-use crate::{CustomMap, a_star::a_star, distances_types::{self, euclidean_distance}, map_visualization, read_files::{MapStats, decode_scen, read_folders, read_lines, read_map}, search_functions::{search_all_valid_coords, search_valid_coords}, write_files};
+use crate::{CustomMap, a_star::a_star, distances_types::{self, euclidean_distance}, map_visualization, open_list::BinaryHeapOpen, read_files::{MapStats, decode_scen, read_folders, read_lines, read_map}, search_functions::{search_all_valid_coords, search_valid_coords}, write_files};
 
 pub fn test_astar(map:&mut CustomMap, test_atempts: usize)->Vec<(u128, Vec<(u32, u32)>)>{
     let test_coords = search_valid_coords(map, 15);
@@ -9,7 +9,7 @@ pub fn test_astar(map:&mut CustomMap, test_atempts: usize)->Vec<(u128, Vec<(u32,
         let start = test_coords[(rand::rng().random::<u32>() % 15) as usize];
         let goal = test_coords[(rand::rng().random::<u32>() % 15) as usize];
         let star_time = Instant::now();
-        let astar_results = a_star(start, goal, map, distances_types::euclidean_distance);
+        let astar_results = a_star::<BinaryHeapOpen, _>(start, goal, map, distances_types::euclidean_distance);
         let finish = star_time.elapsed();
         end_test.push((finish.as_millis(), astar_results.unwrap().path));
     }
@@ -22,7 +22,7 @@ pub fn test_all_valid_points(map:&mut CustomMap)->Vec<(u128, Vec<(u32, u32)>)>{
     for (i, start) in test_coords.iter().enumerate(){
         for goal in &test_coords[i..]{
             let star_time = Instant::now();
-            let astar_results = a_star(*start, *goal, map, distances_types::euclidean_distance).unwrap();
+            let astar_results = a_star::<BinaryHeapOpen, _>(*start, *goal, map, distances_types::euclidean_distance).unwrap();
             let finish = star_time.elapsed();
             end_test.push((finish.as_millis(), astar_results.path));
         }
@@ -67,7 +67,7 @@ pub fn test_astar_correctnes(map:&mut CustomMap){
             }
             let stats = decode_scen(line);
             let star_time = Instant::now();
-            let astar_data = a_star(
+            let astar_data = a_star::<BinaryHeapOpen, _>(
                 stats.start,
                 stats.goal,
                 map,

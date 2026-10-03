@@ -1,7 +1,7 @@
 use std::fs::{self, OpenOptions};
 use std::io::{Write};
 
-use crate::{a_star::{AStarResults, Coords}, read_files::read_folders};
+use crate::{a_star::{AStarResults, Coords}, open_list::OpenList, read_files::read_folders};
 
 // columnas del .tsv, en el mismo orden que se escriben las filas.
 // path va al final a proposito: es la unica de ancho variable, asi que
@@ -13,7 +13,7 @@ pub fn create_stat_file(
     start: Coords,
     goal: Coords,
     expected_distance: f64,
-    results: &AStarResults,
+    results: &AStarResults<impl OpenList>,
     execution_time: u128,
 ) {
     file_name.push_str(".tsv");

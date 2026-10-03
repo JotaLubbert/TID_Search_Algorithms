@@ -1,9 +1,9 @@
 use image::{RgbImage, Rgb};
 use imageproc::drawing::draw_line_segment_mut;
-use std::collections::{BinaryHeap, HashMap};
-use std::cmp::Reverse;
+use std::collections::HashMap;
 use crate::CustomMap;
 use crate::a_star::SearchNode;
+use crate::open_list::OpenList;
 type Coords = (u32, u32);
 type Distance = f64;
 
@@ -20,7 +20,7 @@ pub fn visualize_final_state(
     map: &CustomMap,
     map_width: u32,   // ancho real del mapa (columnas)
     map_height: u32,  // alto real del mapa (filas)
-    open: &BinaryHeap<Reverse<SearchNode>>,
+    open: &impl OpenList,
     close: &HashMap<Coords, SearchNode>,
     start: Coords,
     goal: Coords,
@@ -56,7 +56,7 @@ pub fn visualize_final_state(
     }
 
     // 3. open (verde claro)
-    for Reverse(node) in open.iter() {
+    for node in open.nodes() {
         fill_cell(&mut img, node.coords, OPEN_COLOR);
     }
 

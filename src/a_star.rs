@@ -1,14 +1,12 @@
 use ordered_float::OrderedFloat;
-use std::cmp::Reverse;
-use std::collections::BinaryHeap;
 use std::collections::HashMap;
 use std::mem::{align_of, size_of};
 
 use crate::CustomMap;
+use crate::open_list::OpenList;
 
 pub type Coords = (u32, u32);
 type Distance = f64;
-type OpenType = BinaryHeap<Reverse<SearchNode>>;
 const COSTO_CARDINAL: f64 = 1.0;
 const COSTO_DIAGONAL: f64 = std::f64::consts::SQRT_2;
 
@@ -49,11 +47,11 @@ impl Ord for SearchNode {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering { self.f.total_cmp(&other.f) }
 }
 
-pub struct AStarResults{
+pub struct AStarResults<O: OpenList>{
     pub final_dis: Distance,
     pub path: Vec<Coords>,
     //el open y el close ya no se devuelven completos, solo lo que ocupan en memoria
-    pub open: OpenType,
+    pub open: O,
     pub open_bytes: usize,
     pub close: HashMap<Coords, SearchNode>,
     pub close_bytes: usize,
@@ -81,13 +79,6 @@ const GROUP_WIDTH: usize =
     } else {
         size_of::<usize>()
     };
-
-//size_of_val no sirve acá: solo mide el struct en el stack y el buffer del heap
-//queda fuera, que es justamente lo que crece durante la búsqueda.
-fn open_size_in_bytes(open: &BinaryHeap<Reverse<SearchNode>>) -> usize {
-    size_of::<BinaryHeap<Reverse<SearchNode>>>()
-        + open.capacity() * size_of::<Reverse<SearchNode>>()
-}
 
 //hashbrown reserva una potencia de 2 de buckets y mantiene ocupación máxima de 7/8
 fn buckets_for(capacity: usize) -> usize {
@@ -157,31 +148,34 @@ fn valid_succesors(current_coords: Coords, map: &CustomMap) -> (Vec<Coords>, Vec
 
 
 //Lo mismo, no necesita mutabilidad
-pub fn a_star<Func>(
+//O es la estructura de la open, se elige al llamar: a_star::<BinaryHeapOpen, _>(...)
+pub fn a_star<O, Func>(
     start: Coords,
     goal: Coords,
     map: &CustomMap,
     type_of_distance: Func,
 ) -> Option<
-    AStarResults
+    AStarResults<O>
 >
-where Func: Fn(Coords, Coords) -> Distance
+where
+    O: OpenList,
+    Func: Fn(Coords, Coords) -> Distance,
 {
     if !map[start.1 as usize][start.0 as usize] {
         return None;
     }
 
-    let mut open: OpenType = BinaryHeap::new();
-    //El heap ahora contiene nodos y no tuplas
+    let mut open = O::default();
+    //La open ahora contiene nodos y no tuplas
     let mut close: HashMap<Coords, SearchNode> = HashMap::new();
 
     let h_start = type_of_distance(start, goal);
     let start_node = SearchNode::new(start, 0.0, h_start, None);
     close.insert(start, start_node);
-    open.push(Reverse(start_node));
+    open.insert(start_node);
     let mut expansions: u64 = 0;
     let mut generated: u64 = 0;
-    while let Some(Reverse(current)) = open.pop() {
+    while let Some(current) = open.pop_min() {
         
         let current_g = close[&current.coords].g;
         //Se compara de forma directa el g acutal con el mejor g encontrado en el close
@@ -192,7 +186,7 @@ where Func: Fn(Coords, Coords) -> Distance
         if current.coords == goal {
             //se calcula todo lo que pide prestado open y close antes de moverlos al resultado
             let path = reconstruct_path(&close, current.coords);
-            let open_bytes = open_size_in_bytes(&open);
+            let open_bytes = open.size_in_bytes();
             let close_bytes = close_size_in_bytes(&close);
             return Some(AStarResults{
                 final_dis: current_g,
@@ -217,7 +211,7 @@ where Func: Fn(Coords, Coords) -> Distance
                 let neighbor_node = SearchNode::new(*neighbor, tentative_g, h, Some(current.coords));
                 close.insert(*neighbor, neighbor_node);
                 generated += 1;
-                open.push(Reverse(neighbor_node));
+                open.insert(neighbor_node);
             }
         }
     }
