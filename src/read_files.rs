@@ -1,5 +1,4 @@
-use std::{collections::HashSet, fs::read_to_string, io::SeekFrom::Start, os::linux::raw::stat};
-use rand::distr::Map;
+use std::{collections::HashSet, fs::read_to_string};
 use std::fs;
 
 use crate::CustomMap;

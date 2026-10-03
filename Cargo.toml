@@ -7,4 +7,5 @@ edition = "2024"
 image = "0.25.10"
 imageproc = "0.27.0"
 ordered-float = "5.3.0"
+radix-heap = { path = "vendor/radix-heap" }
 rand = "0.10.2"

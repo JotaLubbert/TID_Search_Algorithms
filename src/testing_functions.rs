@@ -1,7 +1,7 @@
 use std::{time::Instant};
 use rand::{self, RngExt};
 use crate::{CustomMap, a_star::a_star, distances_types::{self, euclidean_distance}, map_visualization, open_list::BinaryHeapOpen, read_files::{MapStats, decode_scen, read_folders, read_lines, read_map}, search_functions::{search_all_valid_coords, search_valid_coords}, write_files};
-
+#[allow(dead_code)]
 pub fn test_astar(map:&mut CustomMap, test_atempts: usize)->Vec<(u128, Vec<(u32, u32)>)>{
     let test_coords = search_valid_coords(map, 15);
     let mut end_test:Vec<(u128, Vec<(u32, u32)>)> = Vec::with_capacity(test_atempts);
@@ -15,26 +15,6 @@ pub fn test_astar(map:&mut CustomMap, test_atempts: usize)->Vec<(u128, Vec<(u32,
     }
     return end_test;
 }
-
-pub fn test_all_valid_points(map:&mut CustomMap)->Vec<(u128, Vec<(u32, u32)>)>{
-    let test_coords = search_all_valid_coords(map);
-    let mut end_test:Vec<(u128, Vec<(u32, u32)>)> = Vec::new();
-    for (i, start) in test_coords.iter().enumerate(){
-        for goal in &test_coords[i..]{
-            let star_time = Instant::now();
-            let astar_results = a_star::<BinaryHeapOpen, _>(*start, *goal, map, distances_types::euclidean_distance).unwrap();
-            let finish = star_time.elapsed();
-            end_test.push((finish.as_millis(), astar_results.path));
-        }
-    }
-    return end_test;
-}
-
-// pub fn test_visualizer(map:&mut CustomMap){
-//     let start= (79, 144); let goal = (244, 78);
-//     let (_total_distance, path, open, close) = a_star(start, goal, map, distances_types::euclidean_distance).unwrap();
-//     map_visualization::visualize_final_state(map, &open, &close, start, goal, &path, 4, "generated_output/hi.png");
-// }
 
 pub fn test_astar_correctnes(map:&mut CustomMap){
     let maps = read_folders("maps");

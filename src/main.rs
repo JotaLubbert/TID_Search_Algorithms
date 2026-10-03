@@ -1,8 +1,6 @@
 mod a_star;
 mod open_list;
 mod read_files;
-use std::time::Instant;
-use crate::read_files::{decode_scen, read_lines};
 mod search_functions;
 mod testing_functions;
 mod write_files;

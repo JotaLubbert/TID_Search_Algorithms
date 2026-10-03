@@ -1,6 +1,11 @@
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
+use radix_heap;
 use std::mem::size_of;
+
+//Implementación base: BinaryHeap es un max-heap, así que con Reverse queda como min-heap por f
+pub type BinaryHeapOpen = BinaryHeap<Reverse<SearchNode>>;
+pub type RadixHeapOpen = radix_heap::RadixHeapMap<Reverse<u64>, SearchNode>;
 
 use crate::a_star::SearchNode;
 
@@ -17,8 +22,6 @@ pub trait OpenList: Default {
     fn nodes(&self) -> impl Iterator<Item = &SearchNode>;
 }
 
-//Implementación base: BinaryHeap es un max-heap, así que con Reverse queda como min-heap por f
-pub type BinaryHeapOpen = BinaryHeap<Reverse<SearchNode>>;
 
 impl OpenList for BinaryHeapOpen {
     fn insert(&mut self, node: SearchNode) {
@@ -37,5 +40,30 @@ impl OpenList for BinaryHeapOpen {
 
     fn nodes(&self) -> impl Iterator<Item = &SearchNode> {
         self.iter().map(|Reverse(node)| node)
+    }
+}
+
+impl OpenList for RadixHeapOpen{
+    fn insert(&mut self, node: SearchNode){
+        let mut key: u64 = node.f.to_bits();
+        if let Some(Reverse(top)) = self.top(){
+            key = key.max(top);
+        }
+        self.push(Reverse(key), node);
+    }
+    
+    fn pop_min(&mut self) -> Option<SearchNode>{
+        match self.pop(){
+            Some(res)=>{Some(res.1)},
+            None =>{None},
+        }
+    }
+    
+    fn size_in_bytes(&self) -> usize{
+        size_of::<Self>() + self.heap_bytes()
+    }
+
+    fn nodes(&self) -> impl Iterator<Item = &SearchNode>{
+        self.iter().map(|(Reverse(_key), node)| node)
     }
 }

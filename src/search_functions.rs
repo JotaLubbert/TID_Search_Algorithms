@@ -15,6 +15,7 @@ pub fn search_valid_coords(map: &CustomMap, k_points: u32)->Vec<(u32, u32)>{
     return samples;
 }
 
+#[allow(dead_code)]
 pub fn search_all_valid_coords(map: &CustomMap)->Vec<(u32, u32)>{
     let mut valid_coords: Vec<(u32, u32)> = Vec::new();
     for j in 0..512{
