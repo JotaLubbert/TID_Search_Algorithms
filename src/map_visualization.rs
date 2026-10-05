@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use image::{RgbImage, Rgb};
 use imageproc::drawing::draw_line_segment_mut;
 use std::collections::HashMap;

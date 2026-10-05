@@ -17,7 +17,7 @@ fn main() {
     // print!("{}ms", finish)
 
 
-    testing_functions::test_astar_correctnes(&mut array);
+    testing_functions::astar_diferent_structures(&mut array);
 
 
     // let mut total_time: u128 = 0;

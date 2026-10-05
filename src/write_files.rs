@@ -1,7 +1,8 @@
 use std::fs::{self, OpenOptions};
 use std::io::{Write};
+use std::path::Path;
 
-use crate::{a_star::{AStarResults, Coords}, open_list::OpenList, read_files::read_folders};
+use crate::{a_star::{AStarResults, Coords}, open_list::OpenList};
 
 // columnas del .tsv, en el mismo orden que se escriben las filas.
 // path va al final a proposito: es la unica de ancho variable, asi que
@@ -17,7 +18,6 @@ pub fn create_stat_file(
     execution_time: u128,
 ) {
     file_name.push_str(".tsv");
-    let files = read_folders("test_result");
 
     //el camino completo, horizontal: "(x, y) (x, y) ...". Sin tabs ni saltos de
     //linea, que son los unicos caracteres que romperian el tsv.
@@ -44,23 +44,15 @@ pub fn create_stat_file(
         path_str
     );
 
-    match files.get(&file_name) {
-        Some(name_file) => {
-            let rout_file = format!("test_result/{}", name_file);
-            let mut file = OpenOptions::new()
-                .append(true)
-                .open(rout_file)
-                .unwrap();
-            let _ = writeln!(file, "{}", text_to_write);
-        }
-        None => {
-            let rout_file = format!("test_result/{}", file_name);
-            let _ = fs::write(&rout_file, format!("{}\n", HEADER));
-            let mut file = OpenOptions::new()
-                .append(true)
-                .open(&rout_file)
-                .unwrap();
-            let _ = writeln!(file, "{}", text_to_write);
-        }
+    //se revisa la ruta completa: file_name puede incluir subcarpeta (ej. "binary-heap/..."),
+    //y listar test_result/ solo ve las subcarpetas, no los archivos dentro de ellas.
+    let rout_file = format!("test_result/{}", file_name);
+    if !Path::new(&rout_file).exists() {
+        let _ = fs::write(&rout_file, format!("{}\n", HEADER));
     }
+    let mut file = OpenOptions::new()
+        .append(true)
+        .open(&rout_file)
+        .unwrap();
+    let _ = writeln!(file, "{}", text_to_write);
 }

@@ -1,4 +1,3 @@
-use ordered_float::OrderedFloat;
 use std::collections::HashMap;
 use std::mem::{align_of, size_of};
 

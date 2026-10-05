@@ -14,6 +14,7 @@ use crate::a_star::SearchNode;
 //no hace falta poder actualizar la prioridad de un nodo que ya está adentro.
 //Default permite que A* cree la open vacía sin saber qué estructura es.
 pub trait OpenList: Default {
+    const NAME: &'static str;
     fn insert(&mut self, node: SearchNode);
     fn pop_min(&mut self) -> Option<SearchNode>;
     //memoria que ocupa la estructura, contando su buffer en el heap
@@ -24,6 +25,8 @@ pub trait OpenList: Default {
 
 
 impl OpenList for BinaryHeapOpen {
+    const NAME: &'static str = "binary-heap";
+    
     fn insert(&mut self, node: SearchNode) {
         self.push(Reverse(node));
     }
@@ -44,6 +47,8 @@ impl OpenList for BinaryHeapOpen {
 }
 
 impl OpenList for RadixHeapOpen{
+    const NAME: &'static str = "radix-heap";
+
     fn insert(&mut self, node: SearchNode){
         let mut key: u64 = node.f.to_bits();
         if let Some(Reverse(top)) = self.top(){

@@ -1,6 +1,6 @@
 use std::{time::Instant};
 use rand::{self, RngExt};
-use crate::{CustomMap, a_star::a_star, distances_types::{self, euclidean_distance}, map_visualization, open_list::BinaryHeapOpen, read_files::{MapStats, decode_scen, read_folders, read_lines, read_map}, search_functions::{search_all_valid_coords, search_valid_coords}, write_files};
+use crate::{CustomMap, a_star::a_star, distances_types::{self, euclidean_distance}, map_visualization, open_list::{self, BinaryHeapOpen, OpenList, RadixHeapOpen}, read_files::{MapStats, decode_scen, read_folders, read_lines, read_map}, search_functions::{search_all_valid_coords, search_valid_coords}, write_files};
 #[allow(dead_code)]
 pub fn test_astar(map:&mut CustomMap, test_atempts: usize)->Vec<(u128, Vec<(u32, u32)>)>{
     let test_coords = search_valid_coords(map, 15);
@@ -16,7 +16,9 @@ pub fn test_astar(map:&mut CustomMap, test_atempts: usize)->Vec<(u128, Vec<(u32,
     return end_test;
 }
 
-pub fn test_astar_correctnes(map:&mut CustomMap){
+pub fn test_astar_correctnes<OpenType>(map:&mut CustomMap)
+where OpenType: OpenList,
+{
     let maps = read_folders("maps");
     let test_data = read_folders("test_data");
     for scen_files in test_data{
@@ -47,14 +49,14 @@ pub fn test_astar_correctnes(map:&mut CustomMap){
             }
             let stats = decode_scen(line);
             let star_time = Instant::now();
-            let astar_data = a_star::<BinaryHeapOpen, _>(
+            let astar_data = a_star::<OpenType, _>(
                 stats.start,
                 stats.goal,
                 map,
                 euclidean_distance
             ).unwrap();
             let finish = star_time.elapsed().as_micros();
-            let file_name = scen_files.clone();
+            let file_name = format!("{}/{}", OpenType::NAME, scen_files);
             write_files::create_stat_file(
                 file_name,
                 stats.start,
@@ -83,4 +85,19 @@ pub fn test_astar_correctnes(map:&mut CustomMap){
             */
         }
     }
+}
+
+pub fn astar_diferent_structures(map:&mut CustomMap){
+    let start_time = Instant::now();
+    test_astar_correctnes::<BinaryHeapOpen>(map);
+    let binary_elapsed = start_time.elapsed().as_secs();
+    let minutes = binary_elapsed/60;
+    let seconds = binary_elapsed % 60;
+    println!("Tiempo en ejecución de BinaryHeap: {}min {}sec", minutes, seconds);
+    let start_time = Instant::now();
+    test_astar_correctnes::<RadixHeapOpen>(map);
+    let radix_elapsed = start_time.elapsed().as_secs();
+    let minutes = radix_elapsed/60;
+    let seconds = radix_elapsed % 60;
+    println!("Tiempo en ejecución de RadixHeap: {}min {}sec", minutes, seconds);
 }
