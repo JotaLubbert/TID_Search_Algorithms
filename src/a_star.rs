@@ -88,18 +88,23 @@ fn buckets_for(capacity: usize) -> usize {
     }
 }
 
-fn close_size_in_bytes(close: &HashMap<Coords, SearchNode>) -> usize {
-    let base = size_of::<HashMap<Coords, SearchNode>>();
-    if close.capacity() == 0 {
+//bytes que un HashMap pide al allocator, sin contar el struct en sí.
+//Es genérica porque el vEB también la usa para medir sus clusters.
+pub(crate) fn hashmap_heap_bytes<K, V, S>(map: &HashMap<K, V, S>) -> usize {
+    if map.capacity() == 0 {
         //un mapa sin capacidad todavía no pide memoria al allocator
-        return base;
+        return 0;
     }
-    let buckets = buckets_for(close.capacity());
-    let entry = size_of::<(Coords, SearchNode)>();
+    let buckets = buckets_for(map.capacity());
+    let entry = size_of::<(K, V)>();
     //los bytes de control van después del arreglo de entradas, realineados
-    let ctrl_align = align_of::<(Coords, SearchNode)>().max(GROUP_WIDTH);
+    let ctrl_align = align_of::<(K, V)>().max(GROUP_WIDTH);
     let ctrl_offset = (buckets * entry).next_multiple_of(ctrl_align);
-    base + ctrl_offset + buckets + GROUP_WIDTH
+    ctrl_offset + buckets + GROUP_WIDTH
+}
+
+fn close_size_in_bytes(close: &HashMap<Coords, SearchNode>) -> usize {
+    size_of::<HashMap<Coords, SearchNode>>() + hashmap_heap_bytes(close)
 }
 
 fn reconstruct_path(close: &HashMap<Coords, SearchNode>, mut current: Coords) -> Vec<Coords> {

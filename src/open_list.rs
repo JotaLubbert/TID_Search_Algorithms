@@ -2,12 +2,13 @@ use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use radix_heap;
 use std::mem::size_of;
+use crate::a_star::SearchNode;
+use crate::veb::VebTree;
 
 //Implementación base: BinaryHeap es un max-heap, así que con Reverse queda como min-heap por f
 pub type BinaryHeapOpen = BinaryHeap<Reverse<SearchNode>>;
 pub type RadixHeapOpen = radix_heap::RadixHeapMap<Reverse<u64>, SearchNode>;
-
-use crate::a_star::SearchNode;
+pub type VebOpen = VebTree;
 
 //Interfaz de la open: A* solo necesita insertar y sacar el nodo de menor f.
 //Como A* deja duplicados en la open y descarta los obsoletos al sacarlos,
