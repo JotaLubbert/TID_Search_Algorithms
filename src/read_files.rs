@@ -1,6 +1,5 @@
-use std::{collections::HashSet, fs::read_to_string, io::SeekFrom::Start, os::linux::raw::stat};
-use rand::distr::Map;
 use std::fs;
+use std::{collections::HashSet, fs::read_to_string};
 
 use crate::CustomMap;
 #[derive(Clone, Copy, Debug)]
