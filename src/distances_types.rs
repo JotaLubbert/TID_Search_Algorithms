@@ -13,3 +13,9 @@ pub fn manhattan_distance(tup1: Coords, tup2: Coords)->Distance{
     let dy = (tup1.1 as f64 - tup2.1 as f64).abs();
     return dx + dy;
 }
+
+pub fn octile_distance(tup1: Coords, tup2: Coords) -> Distance {
+    let dx = (tup1.0 as f64 - tup2.0 as f64).abs();
+    let dy = (tup1.1 as f64 - tup2.1 as f64).abs();
+    return dx.max(dy) + (std::f64::consts::SQRT_2 - 1.0) * dx.min(dy);
+}
