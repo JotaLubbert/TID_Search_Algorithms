@@ -1,70 +1,103 @@
-use std::fs;
-use std::{collections::HashSet, fs::read_to_string};
+use std::time::Instant;
+use std::collections::HashMap;
+use rand::{self, RngExt};
+use crate::{
+    CustomMap,
+    a_star::{a_star, Coords, SearchNode},
+    closed_set::ClosedSet,
+    distances_types::{self, euclidean_distance},
+    read_files::{decode_scen, read_folders, read_lines, read_map},
+    search_functions::{search_all_valid_coords, search_valid_coords},
+    write_files,
+};
 
-use crate::CustomMap;
-#[derive(Clone, Copy, Debug)]
-pub struct MapStats{
-    pub start: (u32, u32),
-    pub goal: (u32, u32),
-    pub distance: f64,
+pub fn test_astar(map: &mut CustomMap, test_atempts: usize) -> Vec<(u128, Vec<(u32, u32)>)> {
+    let test_coords = search_valid_coords(map, 15);
+    let mut end_test: Vec<(u128, Vec<(u32, u32)>)> = Vec::with_capacity(test_atempts);
+    for _i in 0..test_atempts {
+        let start = test_coords[(rand::rng().random::<u32>() % 15) as usize];
+        let goal = test_coords[(rand::rng().random::<u32>() % 15) as usize];
+        let star_time = Instant::now();
+        let astar_results = a_star::<HashMap<Coords, SearchNode>, _>(start, goal, map, distances_types::euclidean_distance);
+        let finish = star_time.elapsed();
+        end_test.push((finish.as_millis(), astar_results.unwrap().path));
+    }
+    return end_test;
 }
 
-pub fn is_travesable(c: u8)->bool{
-    return matches!(c, b'.' | b'G' | b'S');
-}
-
-pub fn read_lines(path:&str)-> Vec<String>{
-    read_to_string(path).unwrap() // panic on possible file-reading errors
-        .lines()  // split the string into an iterator of string slices
-        .map(String::from)  // make each slice into a string
-        .collect()  // gather them together into a vector
-}
-
-pub fn read_map(arr:&mut CustomMap, file_directory: &str)->(u32, u32){
-    let lines: Vec<String> = read_lines(file_directory);
-    let mut height: u32 = 0;
-    let mut width: u32 = 0;
-    for (line, text) in lines.iter().enumerate() {
-        if line == 1 {
-            height = text[7..].parse::<u32>().unwrap();
-            continue;
-        } else if line == 2{
-            width = text[6..].parse::<u32>().unwrap();
-            continue;
-        } else if line < 4{
-            continue;
-        }
-        for (index, characters) in text.chars().enumerate(){
-            let ascii =  characters as u8;
-            arr[line-4][index] = is_travesable(ascii);
+pub fn test_all_valid_points(map: &mut CustomMap) -> Vec<(u128, Vec<(u32, u32)>)> {
+    let test_coords = search_all_valid_coords(map);
+    let mut end_test: Vec<(u128, Vec<(u32, u32)>)> = Vec::new();
+    for (i, start) in test_coords.iter().enumerate() {
+        for goal in &test_coords[i..] {
+            let star_time = Instant::now();
+            let astar_results = a_star::<HashMap<Coords, SearchNode>, _>(*start, *goal, map, distances_types::euclidean_distance).unwrap();
+            let finish = star_time.elapsed();
+            end_test.push((finish.as_millis(), astar_results.path));
         }
     }
-    return (height, width);
+    return end_test;
 }
 
-pub fn decode_scen(line: String)->MapStats{
-    let fields: Vec<&str> = line.split('\t').map(|f| f.trim()).collect();
+// pub fn test_visualizer(map: &mut CustomMap) {
+//     let start = (79, 144); let goal = (244, 78);
+//     let (_total_distance, path, open, close) = a_star::<HashMap<Coords, SearchNode>, _>(start, goal, map, distances_types::euclidean_distance).unwrap();
+//     map_visualization::visualize_final_state(map, &open, &close, start, goal, &path, 4, "generated_output/hi.png");
+// }
 
-    let start_x = fields[4].parse::<u32>().unwrap();
-    let start_y = fields[5].parse::<u32>().unwrap();
-    let goal_x = fields[6].parse::<u32>().unwrap();
-    let goal_y= fields[7].parse::<u32>().unwrap();
-    let distance: f64 = fields[8].parse::<f64>().unwrap();
+// `C` es la estructura del closed y `label` el nombre de la subcarpeta en test_result/
+pub fn test_astar_correctnes<C: ClosedSet>(map: &mut CustomMap, label: &str) {
+    let maps = read_folders("maps");
+    let test_data = read_folders("test_data");
+    for scen_files in test_data {
+        let data_compare = match scen_files.strip_suffix(".scen") {
+            Some(data) => data,
+            None => {
+                panic!("Error, probablemente estás leyendo el directorio equivocado");
+            }
+        };
+        let maptowork = match maps.get(data_compare) {
+            Some(working_map) => working_map,
+            None => {
+                println!("No se encontró mapa deseado.");
+                continue;
+            }
+        };
 
-    return MapStats{
-        start: (start_x, start_y),
-        goal: (goal_x, goal_y),
-        distance: distance
-    };
-}
-
-pub fn read_folders(folder: &str)->HashSet<String>{
-    let paths = fs::read_dir(folder).unwrap();
-    let mut files_found: HashSet<String> = HashSet::new();
-    for file in paths{
-        let name = file.unwrap();
-        let name = name.file_name().to_str().unwrap().to_string();
-        files_found.insert(name);
+        let map_dir = format!("maps/{}", maptowork);
+        let data_in_dir = format!("test_data/{}", scen_files);
+        *map = [[false; 2048]; 2048];
+        let (_height, _width) = read_map(map, &map_dir);
+        let data = read_lines(&data_in_dir);
+        let mut first_line = true;
+        for line in data {
+            if first_line {
+                first_line = false;
+                continue;
+            }
+            if line.trim().is_empty() {
+                continue;
+            }
+            let stats = decode_scen(line);
+            let star_time = Instant::now();
+            let astar_data = match a_star::<C, _>(stats.start, stats.goal, map, euclidean_distance) {
+                Some(d) => d,
+                None => {
+                    println!("Sin camino en {}: {:?} -> {:?}", scen_files, stats.start, stats.goal);
+                    continue;
+                }
+            };
+            let finish = star_time.elapsed().as_micros();
+            let file_name = scen_files.clone();
+            write_files::create_stat_file(
+                label,
+                file_name,
+                stats.start,
+                stats.goal,
+                stats.distance,
+                &astar_data,
+                finish,
+            );
+        }
     }
-    return files_found;
 }
