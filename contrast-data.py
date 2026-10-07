@@ -71,6 +71,20 @@ def keep_reference_visible(ax):
     ax.set_ylim(min(y_min, 1 - 0.06 * span), max(y_max, 1 + 0.06 * span))
 
 
+def plot_series(ax, drawn, name, x, y, color, label, twin_label):
+    #si otra estructura ya dibujó exactamente la misma curva, la nueva la taparía entera:
+    #la de abajo se engrosa para que asome como un borde alrededor de la nueva, y la leyenda lo dice
+    x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
+    for other, (other_x, other_y, other_line) in drawn.items():
+        if np.array_equal(other_x, x) and np.array_equal(other_y, y):
+            other_line.set_linewidth(4.5)
+            other_line.set_zorder(2)
+            ax.plot(x, y, color=color, label=twin_label(other), zorder=3)
+            return
+    line, = ax.plot(x, y, color=color, label=label)
+    drawn[name] = (x, y, line)
+
+
 def panel_legend(ax, loc):
     #fondo del color del gráfico y sin borde: si la leyenda cae sobre una curva, el texto se sigue leyendo
     ax.legend(loc=loc, fontsize=8.5, labelcolor=INK["secondary"], handlelength=1.6, borderaxespad=0.3,
@@ -224,13 +238,15 @@ def plot_map(data, map_name, styles):
             #es peor, bajo ella mejor. Va primero para encabezar la leyenda.
             ax.axhline(1, color=styles[BASELINE][1], linewidth=1.2, zorder=1,
                        label=f"{base_label} (referencia = 1×)")
+        drawn = {}
         for structure, (label, color) in styles.items():
             if relative and structure == BASELINE:
                 continue
             stats = df[df["structure"] == structure].groupby("bin")[column].agg(["median", "size"])
             stats = stats[stats["size"] >= MIN_PER_BIN]
             x = centers[stats.index.astype(int)]
-            ax.plot(x, stats["median"], color=color, label=label)
+            plot_series(ax, drawn, label, x, stats["median"], color, label,
+                        lambda other, label=label: f"{label} (igual a {other})")
             ends.append((x[-1], stats["median"].iloc[-1], label))
             medians[structure] = stats["median"]
         ax.set_title(title)
@@ -292,6 +308,7 @@ def plot_global(data, styles):
         #la referencia como línea vertical en su color: cada camino suyo dividido por sí mismo da 1×
         ax.axvline(1, color=styles[BASELINE][1], linewidth=1.2, zorder=1,
                    label=f"{base_label} (referencia = 1×)")
+        drawn = {}
         for structure, (label, color) in others.items():
             values = data.loc[data["structure"] == structure, column].dropna().to_numpy()
             #2.001 cuantiles bastan para una curva suave y evitan dibujar 155 mil puntos

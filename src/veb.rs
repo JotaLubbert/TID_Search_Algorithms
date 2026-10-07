@@ -30,7 +30,7 @@ const LEAF_BITS: u32 = 8;
 //Mezcla tanto los bits bajos (hashbrown elige el bucket con ellos) como los altos
 //(hashbrown los usa en los bytes de control).
 #[derive(Default)]
-struct FoldHasher(u64);
+pub(crate) struct FoldHasher(u64);
 
 impl Hasher for FoldHasher {
     fn write(&mut self, bytes: &[u8]) {
@@ -50,7 +50,10 @@ impl Hasher for FoldHasher {
     }
 }
 
-type ClusterMap = HashMap<u64, Veb, BuildHasherDefault<FoldHasher>>;
+//HashMap con claves u64 y el hash rápido; también lo usa la open del vEB para agrupar empates
+pub(crate) type FastHashMap<V> = HashMap<u64, V, BuildHasherDefault<FoldHasher>>;
+
+type ClusterMap = FastHashMap<Veb>;
 
 //Universo de hasta 256 claves: un bit por clave
 #[derive(Clone, Copy, Default)]
