@@ -14,6 +14,15 @@ MAPS_TO_PLOT = ["arena2", "den312d", "hrt201n", "orz900d"]
 N_BINS = 20                # tramos de largo de camino en los gráficos por mapa
 MIN_PER_BIN = 5            # un tramo con menos escenarios no se dibuja
 OPTIMALITY_TOL = 1e-6      # el .scen trae la distancia esperada con 8 decimales
+#el tiempo se guarda en µs enteros: en caminos de pocos µs dos estructuras empatan o difieren
+#solo por el redondeo, así que el tiempo relativo se calcula únicamente desde este umbral
+MIN_US_FOR_RATIO = 50
+#para el desglose por tamaño de la open: BinaryHeap reserva 48 bytes por nodo (Reverse<SearchNode>)
+#más los 24 del Vec, así que de open_bytes sale su capacidad en nodos (una potencia de 2)
+BASELINE_NODE_BYTES = 48
+BASELINE_STRUCT_BYTES = 24
+OPEN_SMALLEST_BIN = 128    # las capacidades menores se juntan en un solo tramo
+MIN_PER_OPEN_BIN = 50      # un tamaño con menos caminos no se dibuja
 
 # path se deja fuera a propósito: es la columna más pesada y no se usa
 COLUMNS = ["start_x", "start_y", "goal_x", "goal_y", "expected_distance", "actual_distance",
@@ -24,6 +33,9 @@ STRUCTURE_STYLE = {
     "binary-heap": ("BinaryHeap", "#2a78d6"),
     "radix-heap": ("RadixHeap", "#eb6834"),
     "veb-tree": ("vEB", "#1baf7a"),
+    #violeta y no el siguiente de la paleta (amarillo): el amarillo se confunde con el naranja del
+    #radix original, que es justo con el que más se compara
+    "radix-alt": ("RadixAlt", "#4a3aa7"),
 }
 SPARE_COLORS = ["#eda100", "#e87ba4"]  # siguientes colores de la paleta, para carpetas nuevas
 
@@ -119,7 +131,8 @@ def read_tsvs(structures):
 
 
 def load_results():
-    structures = sorted(p.name for p in TSV_DIR.iterdir() if p.is_dir())
+    #una carpeta todavía vacía (estructura sin correr) no cuenta
+    structures = sorted(p.name for p in TSV_DIR.iterdir() if p.is_dir() and any(p.glob("*.tsv")))
     if BASELINE not in structures:
         raise ValueError(f"falta la carpeta de referencia {TSV_DIR / BASELINE}")
     newest_tsv = max(t.stat().st_mtime for t in TSV_DIR.glob("*/*.tsv"))
@@ -127,7 +140,7 @@ def load_results():
     if CACHE.exists() and CACHE.stat().st_mtime > newest_tsv:
         data = pd.read_pickle(CACHE)
         if sorted(data["structure"].unique()) == structures:
-            return data
+            return with_time_ratio(data)
 
     data = read_tsvs(structures)
     #cada fila se empareja con la misma fila de la referencia: mismo mapa, mismo escenario
@@ -144,8 +157,6 @@ def load_results():
     data["time_ms"] = data["execution_time"] / 1000
     data["open_kb"] = data["open_bytes"] / 1024
     data["us_per_expansion"] = data["execution_time"] / data["expansions"]
-    #un tiempo de 0 µs (problemas triviales) no sirve como divisor
-    data["time_ratio"] = data["execution_time"] / data["execution_time_base"].replace(0, np.nan)
     data["memory_ratio"] = data["open_bytes"] / data["open_bytes_base"]
     data["expansions_ratio"] = data["expansions"] / data["expansions_base"]
     data["error"] = (data["actual_distance"] - data["expected_distance"]).abs()
@@ -154,6 +165,13 @@ def load_results():
 
     CACHE.parent.mkdir(parents=True, exist_ok=True)
     data.to_pickle(CACHE)
+    return with_time_ratio(data)
+
+
+def with_time_ratio(data):
+    #va fuera del caché para que cambiar el umbral no obligue a releer los TSV
+    base = data["execution_time_base"]
+    data["time_ratio"] = data["execution_time"] / base.where(base >= MIN_US_FOR_RATIO)
     return data
 
 
@@ -242,8 +260,9 @@ def plot_map(data, map_name, styles):
         for structure, (label, color) in styles.items():
             if relative and structure == BASELINE:
                 continue
-            stats = df[df["structure"] == structure].groupby("bin")[column].agg(["median", "size"])
-            stats = stats[stats["size"] >= MIN_PER_BIN]
+            #count (y no size) ignora los cocientes descartados por el umbral de µs
+            stats = df[df["structure"] == structure].groupby("bin")[column].agg(["median", "count"])
+            stats = stats[stats["count"] >= MIN_PER_BIN]
             x = centers[stats.index.astype(int)]
             plot_series(ax, drawn, label, x, stats["median"], color, label,
                         lambda other, label=label: f"{label} (igual a {other})")
@@ -347,6 +366,70 @@ def plot_global(data, styles):
     print(f"guardado {out}")
 
 
+def plot_by_open(data, styles):
+    #cada camino se ubica según cuánto creció la open de la referencia; arriba, la mediana del
+    #tiempo relativo en cada tamaño; abajo, cuántos caminos hay de cada tamaño
+    base_label, base_color = styles[BASELINE]
+    others = {s: v for s, v in styles.items() if s != BASELINE}
+    if not others:
+        return
+    capacity = ((data["open_bytes_base"] - BASELINE_STRUCT_BYTES) / BASELINE_NODE_BYTES).round().astype(int)
+    df = data.assign(open_bin=capacity.clip(lower=OPEN_SMALLEST_BIN))
+    counts = df[df["structure"] == BASELINE].groupby("open_bin").size()
+    bins = [b for b, n in counts.items() if n >= MIN_PER_OPEN_BIN]
+    labels = [f"≤{fmt_number(b)}" if b == OPEN_SMALLEST_BIN else fmt_number(b) for b in bins]
+    x = np.arange(len(bins))
+
+    table = df[df["open_bin"].isin(bins)].pivot_table(index="open_bin", columns="structure", values="time_ratio",
+                                                       aggfunc="median", observed=True)
+    table.insert(0, "caminos", counts[bins])
+    table.index.name = "max_nodos_open_redondeado"
+    table.rename(columns=lambda s: styles[s][0] if s in styles else s).to_csv(OUT_DIR / "resumen_por_open.csv")
+
+    fig, (ax, ax_n) = plt.subplots(2, 1, figsize=(11, 8.4), sharex=True, gridspec_kw={"height_ratios": [2.2, 1]})
+    ax.axhline(1, color=base_color, linewidth=1.2, zorder=1, label=f"{base_label} (referencia = 1×)")
+    drawn, ends = {}, []
+    for structure, (label, color) in others.items():
+        y = table[structure].to_numpy()
+        plot_series(ax, drawn, label, x, y, color, label, lambda other, label=label: f"{label} (igual a {other})")
+        #con pocos tamaños, un punto por tamaño ayuda a leerlo; el borde del color de fondo los separa si se cruzan
+        ax.plot(x, y, linestyle="none", marker="o", markersize=6.5, color=color,
+                markeredgecolor=INK["surface"], markeredgewidth=1.2, zorder=4)
+        ends.append((x[-1], y[-1], label))
+    ax.set_title(f"Tiempo relativo a {base_label} (mediana por camino)")
+    ax.set_ylabel(f"Veces el tiempo de {base_label}")
+    keep_reference_visible(ax)
+    ax.set_xlim(-0.4, len(bins) - 1 + 0.9)
+    #sharex esconde las etiquetas del eje x en el panel de arriba; aquí se vuelven a mostrar
+    ax.set_xticks(x, labels)
+    ax.tick_params(labelbottom=True)
+    ax.set_xlabel(f"Máximo de nodos en la open de {base_label} (redondeado a potencia de 2)")
+    panel_legend(ax, "upper right")
+    add_end_labels(ax, ends)
+
+    ax_n.bar(x, counts[bins].to_numpy(), width=0.24, color=base_color)
+    ax_n.set_title("Cuántos caminos llegan a cada tamaño de open")
+    ax_n.set_ylabel("Caminos")
+    ax_n.yaxis.set_major_formatter(FuncFormatter(lambda v, _: fmt_number(v)))
+    ax_n.set_xticks(x, labels)
+    ax_n.tick_params(labelbottom=True)
+    ax_n.set_xlabel(f"Máximo de nodos en la open de {base_label} (redondeado a potencia de 2)")
+
+    fig.suptitle("Todos los mapas: tiempo según el tamaño de la open", x=0.012, ha="left",
+                 fontsize=14, color=INK["primary"], y=0.99)
+    fig.text(0.012, 0.905,
+             f"Cada camino se ubica según el máximo de nodos que tuvo a la vez la open de {base_label}. Bajo 1× la estructura gana.\n"
+             "Los tamaños grandes son pocos caminos, pero son los más largos y los que más tiempo toman.\n"
+             f"El tiempo relativo solo usa caminos donde {base_label} tardó al menos {MIN_US_FOR_RATIO} µs (más cortos, el redondeo a µs los empata).",
+             fontsize=9.5, color=INK["secondary"], linespacing=1.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.9), h_pad=2.4)
+    apply_ratio_format(ax)
+    out = OUT_DIR / "tiempo_por_open.png"
+    fig.savefig(out, dpi=160)
+    plt.close(fig)
+    print(f"guardado {out}")
+
+
 if __name__ == "__main__":
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     data = load_results()
@@ -356,3 +439,4 @@ if __name__ == "__main__":
     for map_name in MAPS_TO_PLOT:
         plot_map(data, map_name, styles)
     plot_global(data, styles)
+    plot_by_open(data, styles)

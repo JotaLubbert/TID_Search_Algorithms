@@ -7,6 +7,7 @@ mod write_files;
 mod distances_types;
 mod map_visualization;
 mod veb;
+mod radix_alt;
 
 type CustomMap = [[bool; 2048]; 2048];
 fn main() {

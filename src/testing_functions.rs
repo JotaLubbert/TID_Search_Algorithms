@@ -1,6 +1,6 @@
 use std::{time::Instant};
 use rand::{self, RngExt};
-use crate::{CustomMap, a_star::a_star, distances_types::{self, euclidean_distance}, map_visualization, open_list::{self, BinaryHeapOpen, OpenList, RadixHeapOpen, VebOpen}, read_files::{MapStats, decode_scen, read_folders, read_lines, read_map}, search_functions::{search_all_valid_coords, search_valid_coords}, write_files};
+use crate::{CustomMap, a_star::a_star, distances_types::{self, euclidean_distance}, map_visualization, open_list::{self, BinaryHeapOpen, OpenList, RadixAltOpen, RadixHeapOpen, VebOpen}, read_files::{MapStats, decode_scen, read_folders, read_lines, read_map}, search_functions::{search_all_valid_coords, search_valid_coords}, write_files};
 #[allow(dead_code)]
 pub fn test_astar(map:&mut CustomMap, test_atempts: usize)->Vec<(u128, Vec<(u32, u32)>)>{
     let test_coords = search_valid_coords(map, 15);
@@ -100,6 +100,12 @@ pub fn astar_diferent_structures(map:&mut CustomMap){
     let minutes = radix_elapsed/60;
     let seconds = radix_elapsed % 60;
     println!("Tiempo en ejecución de RadixHeap: {}min {}sec", minutes, seconds);
+    let start_time = Instant::now();
+    test_astar_correctnes::<RadixAltOpen>(map);
+    let radix_alt_elapsed = start_time.elapsed().as_secs();
+    let minutes = radix_alt_elapsed/60;
+    let seconds = radix_alt_elapsed % 60;
+    println!("Tiempo en ejecución de RadixAlt: {}min {}sec", minutes, seconds);
     let start_time = Instant::now();
     test_astar_correctnes::<VebOpen>(map);
     let veb_elapsed = start_time.elapsed().as_secs();

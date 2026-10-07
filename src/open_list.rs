@@ -5,6 +5,7 @@ use std::collections::hash_map::Entry;
 use std::iter;
 use std::mem::size_of;
 use crate::a_star::{SearchNode, hashmap_heap_bytes};
+use crate::radix_alt::RadixHeap;
 use crate::veb::{FastHashMap, VebTree};
 
 //Implementación base: BinaryHeap es un max-heap, así que con Reverse queda como min-heap por f
@@ -24,6 +25,18 @@ pub struct VebOpen {
 struct VebBucket {
     first: SearchNode,
     rest: Vec<SearchNode>,
+}
+
+//Variante optimizada del radix heap, para contrastar con el original (que no se toca):
+//- usa el RadixHeap de radix_alt.rs, que encuentra el siguiente bucket con una máscara
+//- el heap guarda índices u32 y los nodos viven en slots, que reutiliza los espacios liberados
+//- la clave es la misma del original, f.to_bits(): exacta, así que A* no necesita cambios y
+//  expande los mismos nodos que el radix original; la diferencia de tiempo es solo de la estructura
+#[derive(Default)]
+pub struct RadixAltOpen {
+    heap: RadixHeap<u32>,
+    slots: Vec<SearchNode>,
+    free_slots: Vec<u32>,
 }
 
 //Interfaz de la open: A* solo necesita insertar y sacar el nodo de menor f.
@@ -127,5 +140,43 @@ impl OpenList for VebOpen {
 
     fn nodes(&self) -> impl Iterator<Item = &SearchNode> {
         self.buckets.values().flat_map(|b| iter::once(&b.first).chain(b.rest.iter()))
+    }
+}
+
+impl OpenList for RadixAltOpen {
+    const NAME: &'static str = "radix-alt";
+
+    fn insert(&mut self, node: SearchNode) {
+        let slot = match self.free_slots.pop() {
+            Some(slot) => {
+                self.slots[slot as usize] = node;
+                slot
+            }
+            None => {
+                self.slots.push(node);
+                (self.slots.len() - 1) as u32
+            }
+        };
+        //f >= 0, así que sus bits como u64 mantienen el orden de f. El ajuste a top cubre
+        //el ruido de redondeo de f, igual que en el radix original
+        let key = node.f.to_bits().max(self.heap.top());
+        self.heap.push(key, slot);
+    }
+
+    fn pop_min(&mut self) -> Option<SearchNode> {
+        let (_, slot) = self.heap.pop()?;
+        self.free_slots.push(slot);
+        Some(self.slots[slot as usize])
+    }
+
+    fn size_in_bytes(&self) -> usize {
+        size_of::<Self>()
+            + self.heap.heap_bytes()
+            + self.slots.capacity() * size_of::<SearchNode>()
+            + self.free_slots.capacity() * size_of::<u32>()
+    }
+
+    fn nodes(&self) -> impl Iterator<Item = &SearchNode> {
+        self.heap.values().map(|&slot| &self.slots[slot as usize])
     }
 }
