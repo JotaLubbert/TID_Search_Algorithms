@@ -35,9 +35,13 @@ STRUCTURE_STYLE = {
     "veb-tree": ("vEB", "#1baf7a"),
     #violeta y no el siguiente de la paleta (amarillo): el amarillo se confunde con el naranja del
     #radix original, que es justo con el que más se compara
-    "radix-alt": ("RadixAlt", "#4a3aa7"),
+    "radix-alt": ("RadixAlt", "#e2ff08"),
+    #con cinco series ningún color pasa contra todos los pares; el amarillo pasa entre vecinos y su
+    #único choque es leve (con el naranja, 13,7 de separación contra un mínimo de 15). La leyenda y
+    #las etiquetas al final de cada línea evitan que la identidad dependa solo del color
+    "radix-alt-round": ("RadixAltRound", "#eda100"),
 }
-SPARE_COLORS = ["#eda100", "#e87ba4"]  # siguientes colores de la paleta, para carpetas nuevas
+SPARE_COLORS = ["#e87ba4"]  # siguiente color de la paleta, para una carpeta nueva
 
 INK = {"primary": "#0b0b0b", "secondary": "#52514e", "muted": "#898781",
        "grid": "#e1e0d9", "axis": "#c3c2b7", "surface": "#fcfcfb"}

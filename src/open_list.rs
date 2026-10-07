@@ -30,14 +30,26 @@ struct VebBucket {
 //Variante optimizada del radix heap, para contrastar con el original (que no se toca):
 //- usa el RadixHeap de radix_alt.rs, que encuentra el siguiente bucket con una máscara
 //- el heap guarda índices u32 y los nodos viven en slots, que reutiliza los espacios liberados
-//- la clave es la misma del original, f.to_bits(): exacta, así que A* no necesita cambios y
-//  expande los mismos nodos que el radix original; la diferencia de tiempo es solo de la estructura
+//ROUNDED elige cómo se convierte f en la clave entera del radix heap:
+//- false (RadixAlt): f.to_bits(), la misma clave del original. Es exacta, así que expande los
+//  mismos nodos que el radix original y la diferencia de tiempo es solo de la estructura.
+//- true (RadixAltRound): f amplificada por 2^20 y redondeada al entero más cercano, o sea f medida
+//  en segmentos de ~0,00000095. Borra el ruido de las sumas de g (dos caminos con los mismos pasos en
+//  distinto orden dan f distintas en el último decimal) y así empatan los nodos con la misma f.
+//  Con la heurística octil es exacta: toda f es P + Q·√2 con enteros, y dos f distintas se separan
+//  por ~0,0001 o más, muy por encima del segmento. Con la euclidiana podría juntar f distintas que
+//  estén a menos de un segmento.
 #[derive(Default)]
-pub struct RadixAltOpen {
+pub struct RadixAltBase<const ROUNDED: bool> {
     heap: RadixHeap<u32>,
     slots: Vec<SearchNode>,
     free_slots: Vec<u32>,
 }
+pub type RadixAltOpen = RadixAltBase<false>;
+pub type RadixAltRoundOpen = RadixAltBase<true>;
+
+//2^20: cada unidad de f queda partida en 1.048.576 segmentos. Con f < 4.096 la clave cabe en 32 bits.
+const ROUND_SCALE: f64 = (1u64 << 20) as f64;
 
 //Interfaz de la open: A* solo necesita insertar y sacar el nodo de menor f.
 //Como A* deja duplicados en la open y descarta los obsoletos al sacarlos,
@@ -143,8 +155,8 @@ impl OpenList for VebOpen {
     }
 }
 
-impl OpenList for RadixAltOpen {
-    const NAME: &'static str = "radix-alt";
+impl<const ROUNDED: bool> OpenList for RadixAltBase<ROUNDED> {
+    const NAME: &'static str = if ROUNDED { "radix-alt-round" } else { "radix-alt" };
 
     fn insert(&mut self, node: SearchNode) {
         let slot = match self.free_slots.pop() {
@@ -157,9 +169,15 @@ impl OpenList for RadixAltOpen {
                 (self.slots.len() - 1) as u32
             }
         };
-        //f >= 0, así que sus bits como u64 mantienen el orden de f. El ajuste a top cubre
-        //el ruido de redondeo de f, igual que en el radix original
-        let key = node.f.to_bits().max(self.heap.top());
+        let key = if ROUNDED {
+            //amplificar, redondear al entero más cercano y pasar a u64: 8,6568… -> 9.077.370
+            (node.f * ROUND_SCALE).round() as u64
+        } else {
+            //f >= 0, así que sus bits como u64 mantienen el orden de f
+            node.f.to_bits()
+        };
+        //el ajuste a top cubre el ruido de redondeo de f, igual que en el radix original
+        let key = key.max(self.heap.top());
         self.heap.push(key, slot);
     }
 
