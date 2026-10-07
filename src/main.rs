@@ -7,10 +7,15 @@ mod testing_functions;
 mod write_files;
 mod distances_types;
 mod map_visualization;
+mod closed_set;
+mod robin_hood;
+mod judy;
+use std::collections::HashMap;
+use crate::a_star::{Coords, SearchNode};
 
 type CustomMap = [[bool; 2048]; 2048];
 fn main() {
-    let mut array: CustomMap = [[false; 2048]; 2048];
+    let mut array: Box<CustomMap> = vec![[false; 2048]; 2048].into_boxed_slice().try_into().unwrap();
     // read_files::read_map(&mut array, "maps/arena2.map");
     // let star_time = Instant::now();
     // let _ = testing_functions::test_visualizer(&mut array);
@@ -18,7 +23,9 @@ fn main() {
     // print!("{}ms", finish)
 
 
-    testing_functions::test_astar_correctnes(&mut array);
+    testing_functions::test_astar_correctnes::<HashMap<Coords, SearchNode>>(&mut array, "hashmap");
+    testing_functions::test_astar_correctnes::<robin_hood::RobinHood>(&mut array, "robin_hood");
+    testing_functions::test_astar_correctnes::<judy::Judy>(&mut array, "judy");
 
 
     // let mut total_time: u128 = 0;
