@@ -5,6 +5,7 @@ import matplotlib
 matplotlib.use("Agg")  # solo guarda imágenes, no abre ventanas
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
+from matplotlib.transforms import offset_copy
 
 TSV_DIR = Path("test_result")
 OUT_DIR = Path("generated_output/comparacion")
@@ -23,6 +24,21 @@ BASELINE_NODE_BYTES = 48
 BASELINE_STRUCT_BYTES = 24
 OPEN_SMALLEST_BIN = 128    # las capacidades menores se juntan en un solo tramo
 MIN_PER_OPEN_BIN = 50      # un tamaño con menos caminos no se dibuja
+#niveles de dificultad de una ruta; los cortes no son fijos, se calculan con los datos (with_difficulty)
+DIFFICULTY_LABELS = ["Fácil", "Medio", "Difícil"]
+
+#métricas de las tablas resumen: nombre de la columna -> (columna de los datos, agregación)
+SUMMARY_METRICS = {
+    "tiempo_ms_mediana": ("time_ms", "median"),
+    "tiempo_ms_total": ("time_ms", "sum"),
+    "open_kb_mediana": ("open_kb", "median"),
+    "expansiones_mediana": ("expansions", "median"),
+    "us_por_expansion_mediana": ("us_per_expansion", "median"),
+    "tiempo_vs_base_mediana": ("time_ratio", "median"),
+    "memoria_vs_base_mediana": ("memory_ratio", "median"),
+    "expansiones_vs_base_mediana": ("expansions_ratio", "median"),
+    "optimos_pct": ("optimal", "mean"),
+}
 
 # path se deja fuera a propósito: es la columna más pesada y no se usa
 COLUMNS = ["start_x", "start_y", "goal_x", "goal_y", "expected_distance", "actual_distance",
@@ -35,7 +51,7 @@ STRUCTURE_STYLE = {
     "veb-tree": ("vEB", "#1baf7a"),
     #violeta y no el siguiente de la paleta (amarillo): el amarillo se confunde con el naranja del
     #radix original, que es justo con el que más se compara
-    "radix-alt": ("RadixAlt", "#e2ff08"),
+    "radix-alt": ("RadixAlt", "#4a3aa7"),
     #con cinco series ningún color pasa contra todos los pares; el amarillo pasa entre vecinos y su
     #único choque es leve (con el naranja, 13,7 de separación contra un mínimo de 15). La leyenda y
     #las etiquetas al final de cada línea evitan que la identidad dependa solo del color
@@ -69,7 +85,13 @@ def fmt_number(value, decimals=0):
     return text.replace(",", "_").replace(".", ",").replace("_", ".")
 
 
-def apply_ratio_format(ax, axis="y"):
+def fmt_value(value):
+    #tres cifras significativas: 0,123 · 1,23 · 12,3 · 123
+    decimals = 0 if value >= 100 else 1 if value >= 10 else 2 if value >= 1 else 3
+    return fmt_number(value, decimals)
+
+
+def apply_tick_format(ax, axis="y", suffix=""):
     #mismos decimales en todas las marcas del eje, los justos para que no se repitan.
     #Se llama después de tight_layout porque el ajuste del tamaño puede cambiar las marcas.
     target = ax.yaxis if axis == "y" else ax.xaxis
@@ -77,7 +99,11 @@ def apply_ratio_format(ax, axis="y"):
     step = np.min(np.diff(ticks)) if len(ticks) > 1 else 1
     #los decimales justos para escribir el paso exacto (0,025 necesita 3, no 2)
     decimals = next(d for d in range(7) if abs(round(step * 10**d) - step * 10**d) < 1e-6)
-    target.set_major_formatter(FuncFormatter(lambda v, _: fmt_number(v, decimals) + "×"))
+    target.set_major_formatter(FuncFormatter(lambda v, _: fmt_number(v, decimals) + suffix))
+
+
+def apply_ratio_format(ax, axis="y"):
+    apply_tick_format(ax, axis, "×")
 
 
 def keep_reference_visible(ax):
@@ -101,10 +127,14 @@ def plot_series(ax, drawn, name, x, y, color, label, twin_label):
     drawn[name] = (x, y, line)
 
 
-def panel_legend(ax, loc):
-    #fondo del color del gráfico y sin borde: si la leyenda cae sobre una curva, el texto se sigue leyendo
-    ax.legend(loc=loc, fontsize=8.5, labelcolor=INK["secondary"], handlelength=1.6, borderaxespad=0.3,
-              frameon=True, facecolor=INK["surface"], edgecolor="none", framealpha=0.92)
+def panel_legend(ax, ncol=2):
+    #la leyenda va bajo el panel y no adentro: las curvas cambian con los datos y, con cualquier
+    #ubicación fija o "best", en algún mapa terminaba tapando una curva.
+    #Se ancla a una distancia fija en pulgadas bajo el eje (no en fracción del panel), así queda
+    #debajo de los números y del título del eje x sin importar el alto del panel
+    below_axis = offset_copy(ax.transAxes, fig=ax.figure, y=-0.58, units="inches")
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, 0), bbox_transform=below_axis, ncol=ncol,
+              fontsize=8.5, labelcolor=INK["secondary"], handlelength=1.6, columnspacing=1.4)
 
 
 def structure_styles(structures):
@@ -179,6 +209,20 @@ def with_time_ratio(data):
     return data
 
 
+def with_difficulty(data):
+    #la dificultad sale del bucket de MovingAI, la 1ra columna del .scen: el largo óptimo dividido por 4
+    #y redondeado hacia abajo. El .tsv no lo trae, pero sí el largo óptimo (expected_distance).
+    #Los cortes son absolutos (los mismos para todos los mapas) y se calculan cada vez: son los terciles
+    #del bucket entre todos los escenarios, contando una vez cada escenario (la fila de la referencia).
+    #Así cada nivel queda con ~1/3 de las rutas y, si se agregan mapas, los cortes se ajustan solos.
+    #Va fuera del caché, igual que el tiempo relativo.
+    data["bucket"] = (data["expected_distance"] // 4).astype(int)
+    cuts = data.loc[data["structure"] == BASELINE, "bucket"].quantile([1 / 3, 2 / 3]).to_numpy()
+    #right=False: un bucket igual al corte pasa al nivel de arriba
+    data["difficulty"] = pd.cut(data["bucket"], [-np.inf, *cuts, np.inf], right=False, labels=DIFFICULTY_LABELS)
+    return data
+
+
 def print_optimality(data, styles):
     g = data.groupby("structure")
     table = pd.DataFrame({
@@ -193,28 +237,39 @@ def print_optimality(data, styles):
 
 def save_summaries(data, styles):
     #las tablas son la versión exacta de los gráficos
-    metrics = {
-        "tiempo_ms_mediana": ("time_ms", "median"),
-        "tiempo_ms_total": ("time_ms", "sum"),
-        "open_kb_mediana": ("open_kb", "median"),
-        "expansiones_mediana": ("expansions", "median"),
-        "us_por_expansion_mediana": ("us_per_expansion", "median"),
-        "tiempo_vs_base_mediana": ("time_ratio", "median"),
-        "memoria_vs_base_mediana": ("memory_ratio", "median"),
-        "expansiones_vs_base_mediana": ("expansions_ratio", "median"),
-        "optimos_pct": ("optimal", "mean"),
-    }
-    per_map = data.groupby(["map", "structure"]).agg(**metrics)
+    per_map = data.groupby(["map", "structure"]).agg(**SUMMARY_METRICS)
     per_map["optimos_pct"] *= 100
     per_map.to_csv(OUT_DIR / "resumen_por_mapa.csv")
 
-    overall = data.groupby("structure").agg(**metrics).rename(index=lambda s: styles[s][0])
+    overall = data.groupby("structure").agg(**SUMMARY_METRICS).rename(index=lambda s: styles[s][0])
     overall["optimos_pct"] *= 100
     overall.to_csv(OUT_DIR / "resumen_global.csv")
     print("\nResumen de todos los mapas (medianas por escenario)")
     cols = ["tiempo_ms_total", "us_por_expansion_mediana", "tiempo_vs_base_mediana",
             "memoria_vs_base_mediana", "expansiones_vs_base_mediana"]
     print(overall[cols].to_string(float_format=lambda v: f"{v:.4g}"))
+
+
+def save_difficulty_summary(data, styles):
+    #qué rutas quedaron en cada nivel, contando una vez cada escenario (la fila de la referencia)
+    base = data[data["structure"] == BASELINE]
+    levels = base.groupby("difficulty", observed=True).agg(
+        caminos=("bucket", "size"), mapas=("map", "nunique"),
+        bucket_min=("bucket", "min"), bucket_max=("bucket", "max"),
+        largo_min=("expected_distance", "min"), largo_max=("expected_distance", "max"))
+    #count (y no size) dice cuántos caminos entran al tiempo relativo después del umbral de µs
+    table = data.groupby(["difficulty", "structure"], observed=True).agg(
+        **SUMMARY_METRICS, caminos_con_tiempo_relativo=("time_ratio", "count"))
+    table["optimos_pct"] *= 100
+    table.rename(index=lambda s: styles[s][0] if s in styles else s, level="structure") \
+        .to_csv(OUT_DIR / "resumen_por_dificultad.csv")
+
+    print("\nNiveles de dificultad (terciles del bucket de MovingAI, los mismos cortes para todos los mapas)")
+    print(levels.to_string(float_format=lambda v: fmt_number(v, 1)))
+    ratios = table["tiempo_vs_base_mediana"].unstack("structure").drop(columns=BASELINE)
+    print(f"\nTiempo relativo a {styles[BASELINE][0]} por dificultad (mediana por camino)")
+    print(ratios.rename(columns=lambda s: styles[s][0]).to_string(float_format=lambda v: f"{v:.4g}"))
+    return levels
 
 
 def add_end_labels(ax, ends):
@@ -242,7 +297,7 @@ def plot_map(data, map_name, styles):
     centers = (edges[:-1] + edges[1:]) / 2
     df = df.assign(bin=pd.cut(df["expected_distance"], edges, labels=False, include_lowest=True))
 
-    fig, axes = plt.subplots(2, 3, figsize=(15, 9.6), sharex=True)
+    fig, axes = plt.subplots(2, 3, figsize=(15, 11.8), sharex=True)
     #arriba los valores absolutos, abajo cada escenario dividido por el mismo escenario en la referencia
     panels = [
         (axes[0, 0], "time_ms", "Tiempo de ejecución", "Milisegundos", False),
@@ -269,7 +324,7 @@ def plot_map(data, map_name, styles):
             stats = stats[stats["count"] >= MIN_PER_BIN]
             x = centers[stats.index.astype(int)]
             plot_series(ax, drawn, label, x, stats["median"], color, label,
-                        lambda other, label=label: f"{label} (igual a {other})")
+                        lambda other, label=label: f"{label}\n(igual a {other})")
             ends.append((x[-1], stats["median"].iloc[-1], label))
             medians[structure] = stats["median"]
         ax.set_title(title)
@@ -285,8 +340,7 @@ def plot_map(data, map_name, styles):
             ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: fmt_number(v, 0 if v >= 10 or v == 0 else 1)))
         x_left = ax.get_xlim()[0]
         ax.set_xlim(x_left, edges[-1] + (edges[-1] - edges[0]) * 0.13)
-        #las curvas absolutas crecen hacia la derecha, así que arriba a la izquierda queda libre
-        panel_legend(ax, "best" if relative else "upper left")
+        panel_legend(ax)
         add_end_labels(ax, ends)
         #curvas que nunca se separan más de un 2% del alto del eje: en pantalla una tapa a la otra
         y_min, y_max = ax.get_ylim()
@@ -319,7 +373,7 @@ def plot_global(data, styles):
     others = {s: v for s, v in styles.items() if s != BASELINE}
     if not others:
         return
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5.9))
+    fig, axes = plt.subplots(1, 3, figsize=(15, 7.0))
     panels = [
         (axes[0], "time_ratio", "Tiempo", "el tiempo"),
         (axes[1], "memory_ratio", "Memoria de la open", "la memoria"),
@@ -341,27 +395,29 @@ def plot_global(data, styles):
             #la leyenda trae la lectura principal: la mediana y en cuántos caminos queda sobre la referencia
             median_text = fmt_number(median, 3 if abs(median - 1) < 0.01 else 2)
             higher_text = fmt_number(higher, 0 if higher >= 10 else 1)
-            ax.plot(np.quantile(values, fraction), fraction, color=color,
-                    label=f"{label}: mediana {median_text}×\n{higher_text}% de los caminos sobre 1×")
+            text = f"{label}: mediana {median_text}×\n{higher_text}% de los caminos sobre 1×"
+            #RadixAlt y RadixHeap expanden exactamente los mismos nodos (misma clave, mismo desempate):
+            #plot_series evita que la segunda curva tape a la primera y lo dice en la leyenda
+            plot_series(ax, drawn, label, np.quantile(values, fraction), fraction, color, text,
+                        lambda other, text=text: f"{text}\n(igual a {other})")
         ax.set_xlim(min(lo, 0.95), max(hi, 1.05))
         ax.set_ylim(0, 1)
         ax.set_title(title)
         ax.set_xlabel(f"Veces {what} de {base_label} en el mismo camino")
         ax.grid(axis="x")
         ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:.0%}"))
-        #cada panel tiene su zona libre en un lugar distinto; "best" elige la que menos tapa
-        panel_legend(ax, "best")
+        panel_legend(ax)
     axes[0].set_ylabel("Porcentaje de caminos con ese valor o menos")
     n_scen = (data["structure"] == BASELINE).sum()
     fig.suptitle(f"Todos los mapas: cada estructura comparada con {base_label} en los mismos caminos",
                  x=0.012, ha="left", fontsize=14, color=INK["primary"], y=0.985)
-    fig.text(0.012, 0.865,
+    fig.text(0.012, 0.895,
              f"{fmt_number(n_scen)} caminos de {data['map'].nunique()} mapas. Cada camino de una estructura se divide por "
              f"ese mismo camino en {base_label}, que por eso queda como la línea vertical en 1×.\n"
              "Cómo leer una curva: un punto (x, y) dice que en el y% de los caminos la estructura tuvo x veces "
              f"el valor de {base_label} o menos. A la izquierda de 1× gana; a la derecha pierde.",
              fontsize=9.5, color=INK["secondary"], linespacing=1.5)
-    fig.tight_layout(rect=(0, 0, 1, 0.85), w_pad=2.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.885), w_pad=2.5)
     for ax in axes:
         apply_ratio_format(ax, "x")
     out = OUT_DIR / "todos_los_mapas.png"
@@ -390,12 +446,12 @@ def plot_by_open(data, styles):
     table.index.name = "max_nodos_open_redondeado"
     table.rename(columns=lambda s: styles[s][0] if s in styles else s).to_csv(OUT_DIR / "resumen_por_open.csv")
 
-    fig, (ax, ax_n) = plt.subplots(2, 1, figsize=(11, 8.4), sharex=True, gridspec_kw={"height_ratios": [2.2, 1]})
+    fig, (ax, ax_n) = plt.subplots(2, 1, figsize=(11, 9.2), sharex=True, gridspec_kw={"height_ratios": [2.2, 1]})
     ax.axhline(1, color=base_color, linewidth=1.2, zorder=1, label=f"{base_label} (referencia = 1×)")
     drawn, ends = {}, []
     for structure, (label, color) in others.items():
         y = table[structure].to_numpy()
-        plot_series(ax, drawn, label, x, y, color, label, lambda other, label=label: f"{label} (igual a {other})")
+        plot_series(ax, drawn, label, x, y, color, label, lambda other, label=label: f"{label}\n(igual a {other})")
         #con pocos tamaños, un punto por tamaño ayuda a leerlo; el borde del color de fondo los separa si se cruzan
         ax.plot(x, y, linestyle="none", marker="o", markersize=6.5, color=color,
                 markeredgecolor=INK["surface"], markeredgewidth=1.2, zorder=4)
@@ -408,7 +464,8 @@ def plot_by_open(data, styles):
     ax.set_xticks(x, labels)
     ax.tick_params(labelbottom=True)
     ax.set_xlabel(f"Máximo de nodos en la open de {base_label} (redondeado a potencia de 2)")
-    panel_legend(ax, "upper right")
+    #con un solo panel ancho, la leyenda cabe en una fila
+    panel_legend(ax, ncol=len(others) + 1)
     add_end_labels(ax, ends)
 
     ax_n.bar(x, counts[bins].to_numpy(), width=0.24, color=base_color)
@@ -434,13 +491,111 @@ def plot_by_open(data, styles):
     print(f"guardado {out}")
 
 
+def label_bars(ax, x, values, texts, baseline=0):
+    #el número va en la punta de cada barra, en tinta de texto y no en el color de la serie;
+    #una barra que baja de la línea base (gana contra la referencia) lo lleva bajo la punta
+    for xi, value, text in zip(x, values, texts):
+        down = value < baseline
+        ax.annotate(text, xy=(xi, value), xytext=(0, -4 if down else 4), textcoords="offset points",
+                    ha="center", va="top" if down else "bottom", fontsize=8.5, color=INK["secondary"])
+
+
+def plot_by_difficulty(data, styles, levels, value_col, ratio_col, title, unit, what, note, out_name):
+    #un panel por nivel de dificultad, con una barra por estructura:
+    #- arriba, la mediana por camino de cada una. Cada panel tiene su propia escala, porque una ruta
+    #  difícil cuesta órdenes de magnitud más que una fácil y en una escala común las fáciles no se verían
+    #- abajo, la mediana del cociente contra la referencia. Las barras salen de 1× (bajo 1× gana) y los
+    #  tres paneles comparten escala, para ver cómo cambia la ventaja con la dificultad
+    base_label, base_color = styles[BASELINE]
+    names = list(styles)
+    others = [s for s in names if s != BASELINE]
+    if not others:
+        return
+    values = data.pivot_table(index="difficulty", columns="structure", values=value_col,
+                              aggfunc="median", observed=True)
+    ratios = data.pivot_table(index="difficulty", columns="structure", values=ratio_col,
+                              aggfunc="median", observed=True)
+
+    fig, axes = plt.subplots(2, len(levels), figsize=(15, 9.8))
+    for ax in axes[1, 1:]:
+        ax.sharey(axes[1, 0])
+    #itertuples y no iterrows: iterrows pasa todas las columnas a float y los conteos saldrían "156.0"
+    for col, row in enumerate(levels.itertuples()):
+        level = row.Index
+        ax_top, ax_bottom = axes[0, col], axes[1, col]
+
+        x = np.arange(len(names))
+        y = values.loc[level, names].to_numpy()
+        #el borde del color de fondo deja un espacio entre barras vecinas
+        ax_top.bar(x, y, width=0.72, color=[styles[s][1] for s in names],
+                   edgecolor=INK["surface"], linewidth=1, zorder=2)
+        label_bars(ax_top, x, y, [fmt_value(v) for v in y])
+        ax_top.set_ylim(0, y.max() * 1.15)
+        ax_top.set_xticks(x, [styles[s][0] for s in names], rotation=25, ha="right")
+        #cada nivel dice qué largos abarca y de dónde salen sus rutas: con cortes absolutos,
+        #las rutas difíciles vienen solo de los mapas grandes
+        ax_top.set_title(f"{level}: largo {fmt_number(row.largo_min)} a {fmt_number(row.largo_max)}\n"
+                         f"{fmt_number(row.caminos)} caminos de {fmt_number(row.mapas)} mapas")
+
+        x = np.arange(len(others))
+        y = ratios.loc[level, others].to_numpy()
+        ax_bottom.axhline(1, color=base_color, linewidth=1.2, zorder=3)
+        ax_bottom.bar(x, y - 1, bottom=1, width=0.72, color=[styles[s][1] for s in others],
+                      edgecolor=INK["surface"], linewidth=1, zorder=2)
+        label_bars(ax_bottom, x, y, [fmt_number(v, 2) + "×" for v in y], baseline=1)
+        ax_bottom.set_xticks(x, [styles[s][0] for s in others], rotation=25, ha="right")
+        ax_bottom.set_title(f"{level}: relativo a {base_label} (línea = 1×)")
+        if col > 0:
+            #comparten escala con el primer panel de la fila, así que sus números sobran
+            ax_bottom.tick_params(labelleft=False)
+    axes[0, 0].set_ylabel(unit)
+    axes[1, 0].set_ylabel(f"Veces {what} de {base_label}")
+
+    #espacio para los números solo del lado donde hay barras: bajo 1× si alguna gana, sobre 1× si alguna
+    #pierde; del otro lado basta un margen chico (en memoria casi todo queda sobre 1× y el eje no debe bajar de 0)
+    all_ratios = ratios.loc[levels.index, others].to_numpy()
+    low, high = min(np.nanmin(all_ratios), 1), max(np.nanmax(all_ratios), 1)
+    span = high - low
+    bottom = low - (0.2 if low < 1 else 0.06) * span
+    top = high + (0.2 if high > 1 else 0.06) * span
+    axes[1, 0].set_ylim(max(bottom, 0), top)
+
+    fig.suptitle(f"Todos los mapas: {title} según la dificultad de la ruta", x=0.012, ha="left",
+                 fontsize=14, color=INK["primary"], y=0.99)
+    fig.text(0.012, 0.9,
+             "La dificultad sale del largo del camino óptimo (el bucket de MovingAI); los cortes son los terciles de todos los "
+             "escenarios, los mismos para todos los mapas.\n"
+             "Arriba, la mediana por camino de cada estructura (cada panel con su escala). Abajo, la mediana de cada camino "
+             f"dividido por ese mismo camino en {base_label},\nque no es el cociente de las barras de arriba. {note}",
+             fontsize=9.5, color=INK["secondary"], linespacing=1.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.885), h_pad=2.6, w_pad=2.5)
+    for ax in axes[0]:
+        apply_tick_format(ax)
+    apply_ratio_format(axes[1, 0])
+    out = OUT_DIR / out_name
+    fig.savefig(out, dpi=160)
+    plt.close(fig)
+    print(f"guardado {out}")
+
+
 if __name__ == "__main__":
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    data = load_results()
+    data = with_difficulty(load_results())
     styles = structure_styles(sorted(data["structure"].unique()))
     print_optimality(data, styles)
     save_summaries(data, styles)
+    levels = save_difficulty_summary(data, styles)
     for map_name in MAPS_TO_PLOT:
         plot_map(data, map_name, styles)
     plot_global(data, styles)
     plot_by_open(data, styles)
+    base_label = styles[BASELINE][0]
+    plot_by_difficulty(data, styles, levels, "time_ms", "time_ratio", "tiempo de ejecución",
+                       "Milisegundos por camino", "el tiempo",
+                       f"Bajo 1× la estructura gana. El tiempo relativo solo usa caminos donde {base_label} "
+                       f"tardó al menos {MIN_US_FOR_RATIO} µs.",
+                       "tiempo_por_dificultad.png")
+    plot_by_difficulty(data, styles, levels, "open_kb", "memory_ratio", "memoria de la open",
+                       "Kilobytes por camino", "la memoria",
+                       "Bajo 1× la estructura gana. La memoria es lo que reservaba la open al llegar a la meta.",
+                       "memoria_por_dificultad.png")

@@ -1,4 +1,4 @@
-use std::{time::Instant};
+use std::time::{Duration, Instant};
 use rand::{self, RngExt};
 use crate::{CustomMap, a_star::a_star, distances_types::{self, octile_distance}, map_visualization, memory_counter::Medido, open_list::{BinaryHeapOpen, OpenList, RadixAltOpen, RadixAltRoundOpen, RadixHeapOpen, VebOpen}, read_files::{decode_scen, read_folders, read_lines, read_map}, search_functions::{search_valid_coords}, write_files};
 #[allow(dead_code)]
@@ -89,35 +89,31 @@ where OpenType: OpenList,
     }
 }
 
+fn elapsed_to_min_secs(name: &str,elapsed: u64){
+    let minutes = elapsed/60;
+    let seconds = elapsed % 60;
+    println!("Tiempo en ejecución de {name}: {minutes}min {seconds}s")
+}
+
 pub fn astar_diferent_structures(map:&mut CustomMap){
     let start_time = Instant::now();
     test_astar_correctnes::<BinaryHeapOpen>(map);
     let binary_elapsed = start_time.elapsed().as_secs();
-    let minutes = binary_elapsed/60;
-    let seconds = binary_elapsed % 60;
-    println!("Tiempo en ejecución de BinaryHeap: {}min {}sec", minutes, seconds);
+    elapsed_to_min_secs("BinaryHeap", binary_elapsed);
     let start_time = Instant::now();
     test_astar_correctnes::<RadixHeapOpen>(map);
     let radix_elapsed = start_time.elapsed().as_secs();
-    let minutes = radix_elapsed/60;
-    let seconds = radix_elapsed % 60;
-    println!("Tiempo en ejecución de RadixHeap: {}min {}sec", minutes, seconds);
+    elapsed_to_min_secs("RadixHeap", radix_elapsed);
     let start_time = Instant::now();
     test_astar_correctnes::<RadixAltOpen>(map);
     let radix_alt_elapsed = start_time.elapsed().as_secs();
-    let minutes = radix_alt_elapsed/60;
-    let seconds = radix_alt_elapsed % 60;
-    println!("Tiempo en ejecución de RadixAlt: {}min {}sec", minutes, seconds);
+    elapsed_to_min_secs("RadixAlt", radix_alt_elapsed);
     let start_time = Instant::now();
     test_astar_correctnes::<RadixAltRoundOpen>(map); // amplifica el f * 2^(20), redondea y luego a u64
     let radix_alt_round_elapsed = start_time.elapsed().as_secs();
-    let minutes = radix_alt_round_elapsed/60;
-    let seconds = radix_alt_round_elapsed % 60;
-    println!("Tiempo en ejecución de RadixAltRound: {}min {}sec", minutes, seconds);
+    elapsed_to_min_secs("RadixAltRound", radix_alt_round_elapsed);
     let start_time = Instant::now();
     test_astar_correctnes::<VebOpen>(map);
     let veb_elapsed = start_time.elapsed().as_secs();
-    let minutes = veb_elapsed/60;
-    let seconds = veb_elapsed % 60;
-    println!("Tiempo en ejecución de vEB: {}min {}sec", minutes, seconds);
+    elapsed_to_min_secs("vEB", veb_elapsed);
 }
