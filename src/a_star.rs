@@ -52,6 +52,8 @@ pub struct AStarResults<Open: OpenList>{
     //el open y el close ya no se devuelven completos, solo lo que ocupan en memoria
     pub open: Open,
     pub open_bytes: usize,
+    //de lo reservado (open_bytes), cuánto tenía datos al llegar a la meta
+    pub open_used_bytes: usize,
     pub close: HashMap<Coords, SearchNode>,
     pub close_bytes: usize,
     pub expansions: u64,
@@ -191,12 +193,14 @@ where
             //se calcula todo lo que pide prestado open y close antes de moverlos al resultado
             let path = reconstruct_path(&close, current.coords);
             let open_bytes = open.size_in_bytes();
+            let open_used_bytes = open.used_bytes();
             let close_bytes = close_size_in_bytes(&close);
             return Some(AStarResults{
                 final_dis: current_g,
                 path,
                 open,
                 open_bytes,
+                open_used_bytes,
                 close,
                 close_bytes,
                 expansions,

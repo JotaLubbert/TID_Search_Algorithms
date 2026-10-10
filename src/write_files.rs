@@ -7,7 +7,7 @@ use crate::{a_star::{AStarResults, Coords}, open_list::OpenList};
 // columnas del .tsv, en el mismo orden que se escriben las filas.
 // path va al final a proposito: es la unica de ancho variable, asi que
 // dejarla ahi evita que el resto de las columnas se desalinee.
-const HEADER: &str = "start_x\tstart_y\tgoal_x\tgoal_y\texpected_distance\tactual_distance\tpath_len\texpansions\tgenerated\topen_bytes\tclose_bytes\texecution_time\tpath";
+const HEADER: &str = "start_x\tstart_y\tgoal_x\tgoal_y\texpected_distance\tactual_distance\tpath_len\texpansions\tgenerated\topen_bytes\topen_used_bytes\topen_peak_bytes\tclose_bytes\texecution_time\tpath";
 
 pub fn create_stat_file(
     mut file_name: String,
@@ -15,6 +15,8 @@ pub fn create_stat_file(
     goal: Coords,
     expected_distance: f64,
     results: &AStarResults<impl OpenList>,
+    //máximo que reservó la open en la búsqueda (lo mide Medido, A* no lo conoce)
+    open_peak_bytes: usize,
     execution_time: u128,
 ) {
     file_name.push_str(".tsv");
@@ -30,7 +32,7 @@ pub fn create_stat_file(
     }
 
     let text_to_write = format!(
-        "{}\t{}\t{}\t{}\t{:.8}\t{:.8}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+        "{}\t{}\t{}\t{}\t{:.8}\t{:.8}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
         start.0, start.1,
         goal.0, goal.1,
         expected_distance,
@@ -39,6 +41,8 @@ pub fn create_stat_file(
         results.expansions,
         results.generated,
         results.open_bytes,
+        results.open_used_bytes,
+        open_peak_bytes,
         results.close_bytes,
         execution_time,
         path_str

@@ -18,6 +18,7 @@ test_result
 **/mutants.out*/
 
 .venv
+sobre_vEB.md
 
 vendor/radix-heap/LICENSE
 

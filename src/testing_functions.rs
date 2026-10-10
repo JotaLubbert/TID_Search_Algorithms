@@ -1,6 +1,6 @@
 use std::{time::Instant};
 use rand::{self, RngExt};
-use crate::{CustomMap, a_star::a_star, distances_types::{self, euclidean_distance, octile_distance}, map_visualization, open_list::{self, BinaryHeapOpen, OpenList, RadixAltOpen, RadixAltRoundOpen, RadixHeapOpen, VebOpen}, read_files::{MapStats, decode_scen, read_folders, read_lines, read_map}, search_functions::{search_all_valid_coords, search_valid_coords}, write_files};
+use crate::{CustomMap, a_star::a_star, distances_types::{self, octile_distance}, map_visualization, memory_counter::Medido, open_list::{BinaryHeapOpen, OpenList, RadixAltOpen, RadixAltRoundOpen, RadixHeapOpen, VebOpen}, read_files::{decode_scen, read_folders, read_lines, read_map}, search_functions::{search_valid_coords}, write_files};
 #[allow(dead_code)]
 pub fn test_astar(map:&mut CustomMap, test_atempts: usize)->Vec<(u128, Vec<(u32, u32)>)>{
     let test_coords = search_valid_coords(map, 15);
@@ -49,7 +49,8 @@ where OpenType: OpenList,
             }
             let stats = decode_scen(line);
             let star_time = Instant::now();
-            let astar_data = a_star::<OpenType, _>(
+            //Medido envuelve la open para registrar el máximo de memoria que reservó en la búsqueda
+            let astar_data = a_star::<Medido<OpenType>, _>(
                 stats.start,
                 stats.goal,
                 map,
@@ -63,6 +64,7 @@ where OpenType: OpenList,
                 stats.goal,
                 stats.distance,
                 &astar_data,
+                astar_data.open.peak_bytes(),
                 finish
             );
             /*

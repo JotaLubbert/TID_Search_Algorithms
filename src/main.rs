@@ -8,6 +8,7 @@ mod distances_types;
 mod map_visualization;
 mod veb;
 mod radix_alt;
+mod memory_counter;
 
 type CustomMap = [[bool; 2048]; 2048];
 fn main() {

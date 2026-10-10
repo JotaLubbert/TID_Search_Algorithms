@@ -61,6 +61,8 @@ pub trait OpenList: Default {
     fn pop_min(&mut self) -> Option<SearchNode>;
     //memoria que ocupa la estructura, contando su buffer en el heap
     fn size_in_bytes(&self) -> usize;
+    //de lo reservado, los bytes que tienen datos ahora: cuántos elementos hay por lo que ocupa cada uno
+    fn used_bytes(&self) -> usize;
     //recorre los nodos sin importar el orden, se usa para la visualización
     fn nodes(&self) -> impl Iterator<Item = &SearchNode>;
 }
@@ -81,6 +83,10 @@ impl OpenList for BinaryHeapOpen {
     //queda fuera, que es justamente lo que crece durante la búsqueda.
     fn size_in_bytes(&self) -> usize {
         size_of::<Self>() + self.capacity() * size_of::<Reverse<SearchNode>>()
+    }
+
+    fn used_bytes(&self) -> usize {
+        self.len() * size_of::<Reverse<SearchNode>>()
     }
 
     fn nodes(&self) -> impl Iterator<Item = &SearchNode> {
@@ -108,6 +114,11 @@ impl OpenList for RadixHeapOpen{
     
     fn size_in_bytes(&self) -> usize{
         size_of::<Self>() + self.heap_bytes()
+    }
+
+    //cada entrada del radix heap del crate es la clave junto al nodo completo
+    fn used_bytes(&self) -> usize{
+        self.len() * size_of::<(Reverse<u64>, SearchNode)>()
     }
 
     fn nodes(&self) -> impl Iterator<Item = &SearchNode>{
@@ -148,6 +159,13 @@ impl OpenList for VebOpen {
             + self.tree.heap_bytes()
             + hashmap_heap_bytes(&self.buckets)
             + self.buckets.values().map(|b| b.rest.capacity() * size_of::<SearchNode>()).sum::<usize>()
+    }
+
+    //cada f distinta ocupa una entrada en buckets y su clave en el árbol; cada empate, un nodo en su Vec
+    fn used_bytes(&self) -> usize {
+        self.tree.used_bytes()
+            + self.buckets.len() * size_of::<(u64, VebBucket)>()
+            + self.buckets.values().map(|b| b.rest.len() * size_of::<SearchNode>()).sum::<usize>()
     }
 
     fn nodes(&self) -> impl Iterator<Item = &SearchNode> {
@@ -192,6 +210,11 @@ impl<const ROUNDED: bool> OpenList for RadixAltBase<ROUNDED> {
             + self.heap.heap_bytes()
             + self.slots.capacity() * size_of::<SearchNode>()
             + self.free_slots.capacity() * size_of::<u32>()
+    }
+
+    //cada nodo vivo ocupa su entrada en el heap (clave e índice) y su lugar en slots
+    fn used_bytes(&self) -> usize {
+        self.heap.len() * (size_of::<(u64, u32)>() + size_of::<SearchNode>())
     }
 
     fn nodes(&self) -> impl Iterator<Item = &SearchNode> {

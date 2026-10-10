@@ -262,6 +262,18 @@ impl Veb {
             }
         }
     }
+
+    //como heap_bytes, pero cada tabla cuenta solo sus entradas ocupadas (len en vez de capacidad)
+    fn used_bytes(&self) -> usize {
+        match self {
+            Veb::Leaf(_) => 0,
+            Veb::Node(node) => {
+                node.clusters.len() * size_of::<(u64, Veb)>()
+                    + node.summary.as_ref().map_or(0, |summary| size_of::<Veb>() + summary.used_bytes())
+                    + node.clusters.values().map(Veb::used_bytes).sum::<usize>()
+            }
+        }
+    }
 }
 
 //Conjunto de claves u64 con insert, min y pop_min en O(log log U)
@@ -326,6 +338,11 @@ impl VebTree {
     //memoria que el árbol pide al allocator (nodos y tablas de clusters), sin contar el struct
     pub fn heap_bytes(&self) -> usize {
         self.root.as_ref().map_or(0, Veb::heap_bytes)
+    }
+
+    //de heap_bytes, lo que tiene datos: entradas ocupadas en las tablas de clusters y los summaries
+    pub fn used_bytes(&self) -> usize {
+        self.root.as_ref().map_or(0, Veb::used_bytes)
     }
 }
 
