@@ -56,6 +56,9 @@ STRUCTURE_STYLE = {
     #único choque es leve (con el naranja, 13,7 de separación contra un mínimo de 15). La leyenda y
     #las etiquetas al final de cada línea evitan que la identidad dependa solo del color
     "radix-alt-round": ("RadixAltRound", "#eda100"),
+    #magenta oscuro y no el magenta de la paleta (#e87ba4), que se confunde con el naranja de RadixHeap.
+    #Con este, los peores pares de la paleta siguen siendo los que ya había (naranja-amarillo)
+    "quick-heap": ("QuickHeap", "#b8327a"),
 }
 SPARE_COLORS = ["#e87ba4"]  # siguiente color de la paleta, para una carpeta nueva
 

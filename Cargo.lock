@@ -9,6 +9,7 @@ dependencies = [
  "image",
  "imageproc",
  "ordered-float",
+ "quickheap",
  "radix-heap",
  "rand 0.10.2",
 ]
@@ -283,6 +284,12 @@ name = "either"
 version = "1.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "252afb9ae5eaa683babdc6a068b3f5726eb19e05070c731f9b2a23a7c3e8ed34"
+
+[[package]]
+name = "ensure_simd"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c45a25613230d2ee8b1b68510f44ed8d765b6ef9a597d9ad5489e3d0ddfdc61d"
 
 [[package]]
 name = "equator"
@@ -882,6 +889,15 @@ name = "quick-error"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a993555f31e5a609f617c12db6250dedcac1b0a85076912c436e6fc9b2c8e6a3"
+
+[[package]]
+name = "quickheap"
+version = "0.1.0"
+dependencies = [
+ "ensure_simd",
+ "rand 0.10.2",
+ "wide",
+]
 
 [[package]]
 name = "quote"

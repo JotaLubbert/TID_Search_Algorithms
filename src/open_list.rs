@@ -7,6 +7,7 @@ use std::mem::size_of;
 use crate::a_star::{SearchNode, hashmap_heap_bytes};
 use crate::radix_alt::RadixHeap;
 use crate::veb::{FastHashMap, VebTree};
+use quickheap::SimdQuickHeap;
 
 //Implementación base: BinaryHeap es un max-heap, así que con Reverse queda como min-heap por f
 pub type BinaryHeapOpen = BinaryHeap<Reverse<SearchNode>>;
@@ -50,6 +51,23 @@ pub type RadixAltRoundOpen = RadixAltBase<true>;
 
 //2^20: cada unidad de f queda partida en 1.048.576 segmentos. Con f < 4.096 la clave cabe en 32 bits.
 const ROUND_SCALE: f64 = (1u64 << 20) as f64;
+
+//SimdQuickHeap (vendor/quickheap): parte la cola en capas con pivotes al azar, como un quickselect,
+//usando SIMD (AVX2), y saca el mínimo de una última capa chica y ordenada.
+//Solo guarda enteros, así que cada entrada es un u64 con la f en los 32 bits altos y el índice del
+//nodo en slots en los 32 bajos (los nodos viven aparte, como en RadixAlt):
+//- la f va redondeada a 2^-19, igual que en RadixAltRound: con la octil es exacta y cabe hasta f < 8.192
+//- el índice hace que no haya dos entradas iguales: los empates salen por índice, siempre en el mismo
+//  orden, aunque los pivotes se elijan al azar
+#[derive(Default)]
+pub struct QuickHeapOpen {
+    heap: SimdQuickHeap<u64>,
+    slots: Vec<SearchNode>,
+    free_slots: Vec<u32>,
+}
+
+const QUICK_SCALE: f64 = (1u64 << 19) as f64;
+const SLOT_MASK: u64 = u32::MAX as u64;
 
 //Interfaz de la open: A* solo necesita insertar y sacar el nodo de menor f.
 //Como A* deja duplicados en la open y descarta los obsoletos al sacarlos,
@@ -220,4 +238,44 @@ impl<const ROUNDED: bool> OpenList for RadixAltBase<ROUNDED> {
     fn nodes(&self) -> impl Iterator<Item = &SearchNode> {
         self.heap.values().map(|&slot| &self.slots[slot as usize])
     }
+}
+
+impl OpenList for QuickHeapOpen{
+    const NAME: &'static str = "quick-heap";
+    fn insert(&mut self, node: SearchNode) {
+        let slot = match self.free_slots.pop() {
+            Some(slot) => {
+                self.slots[slot as usize] = node;
+                slot
+            }
+            None => {
+                self.slots.push(node);
+                (self.slots.len() - 1) as u32
+            }
+        };
+        let key = (node.f * QUICK_SCALE).round() as u64;
+        //assert y no debug_assert: si la f no cupiera, el desplazamiento la cortaría sin avisar
+        //y la entrada apuntaría a otro slot
+        assert!(key <= SLOT_MASK, "f = {} no cabe en los 32 bits de la clave", node.f);
+        self.heap.push((key << 32) | slot as u64);
+    }
+    fn nodes(&self) -> impl Iterator<Item = &SearchNode> {
+        self.heap.iter().map(|&entry| &self.slots[(entry & SLOT_MASK) as usize])
+    }
+    fn pop_min(&mut self) -> Option<SearchNode> {
+        let slot = (self.heap.pop()? & SLOT_MASK) as u32;
+        self.free_slots.push(slot);
+        Some(self.slots[slot as usize])
+    }
+    fn size_in_bytes(&self) -> usize {
+        size_of::<Self>()
+            + self.heap.heap_bytes()
+            + self.slots.capacity() * size_of::<SearchNode>()
+            + self.free_slots.capacity() * size_of::<u32>()
+    }
+    //cada nodo vivo ocupa su entrada u64 en la cola y su lugar en slots
+    fn used_bytes(&self) -> usize {
+        (self.slots.len() - self.free_slots.len()) * (size_of::<u64>() + size_of::<SearchNode>())
+    }
+
 }

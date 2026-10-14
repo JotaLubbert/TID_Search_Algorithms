@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 use rand::{self, RngExt};
-use crate::{CustomMap, a_star::a_star, distances_types::{self, octile_distance}, map_visualization, memory_counter::Medido, open_list::{BinaryHeapOpen, OpenList, RadixAltOpen, RadixAltRoundOpen, RadixHeapOpen, VebOpen}, read_files::{decode_scen, read_folders, read_lines, read_map}, search_functions::{search_valid_coords}, write_files};
+use crate::{CustomMap, a_star::a_star, distances_types::{self, octile_distance}, map_visualization, memory_counter::Medido, open_list::{BinaryHeapOpen, OpenList, QuickHeapOpen, RadixAltOpen, RadixAltRoundOpen, RadixHeapOpen, VebOpen}, read_files::{decode_scen, read_folders, read_lines, read_map}, search_functions::{search_valid_coords}, write_files};
 #[allow(dead_code)]
 pub fn test_astar(map:&mut CustomMap, test_atempts: usize)->Vec<(u128, Vec<(u32, u32)>)>{
     let test_coords = search_valid_coords(map, 15);
@@ -116,4 +116,8 @@ pub fn astar_diferent_structures(map:&mut CustomMap){
     test_astar_correctnes::<VebOpen>(map);
     let veb_elapsed = start_time.elapsed().as_secs();
     elapsed_to_min_secs("vEB", veb_elapsed);
+    let start_time = Instant::now();
+    test_astar_correctnes::<QuickHeapOpen>(map);
+    let quick_elapsed = start_time.elapsed().as_secs();
+    elapsed_to_min_secs("QuickHeap", quick_elapsed);
 }
