@@ -20,7 +20,7 @@ fn main() {
     // print!("{}ms", finish)
 
 
-    testing_functions::astar_diferent_structures(&mut array);
+    testing_functions::test_structur_per_map(&mut array);
 
 
     // let mut total_time: u128 = 0;

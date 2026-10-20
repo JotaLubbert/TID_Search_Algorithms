@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 use rand::{self, RngExt};
-use crate::{CustomMap, a_star::a_star, distances_types::{self, octile_distance}, map_visualization, memory_counter::Medido, open_list::{BinaryHeapOpen, OpenList, QuickHeapOpen, RadixAltOpen, RadixAltRoundOpen, RadixHeapOpen, VebOpen}, read_files::{decode_scen, read_folders, read_lines, read_map}, search_functions::{search_valid_coords}, write_files};
+use crate::{CustomMap, a_star::{Coords, a_star}, distances_types::{self, octile_distance}, map_visualization, memory_counter::Medido, open_list::{BinaryHeapOpen, OpenList, QuickHeapOpen, RadixAltOpen, RadixAltRoundOpen, RadixHeapOpen, VebOpen}, read_files::{MapStats, decode_scen, read_folders, read_lines, read_map}, search_functions::search_valid_coords, write_files};
 #[allow(dead_code)]
 pub fn test_astar(map:&mut CustomMap, test_atempts: usize)->Vec<(u128, Vec<(u32, u32)>)>{
     let test_coords = search_valid_coords(map, 15);
@@ -120,4 +120,88 @@ pub fn astar_diferent_structures(map:&mut CustomMap){
     test_astar_correctnes::<QuickHeapOpen>(map);
     let quick_elapsed = start_time.elapsed().as_secs();
     elapsed_to_min_secs("QuickHeap", quick_elapsed);
+}
+
+fn run_map_struct_save<OpenType>(map: &CustomMap, stats: MapStats, scen_files: &str)
+where OpenType: OpenList,
+{
+    let star_time = Instant::now();
+    //Medido envuelve la open para registrar el máximo de memoria que reservó en la búsqueda
+    let astar_data = a_star::<Medido<OpenType>, _>(
+        stats.start,
+        stats.goal,
+        map,
+        octile_distance
+    ).unwrap();
+    let finish = star_time.elapsed().as_micros();
+    let file_name = format!("{}/{}", OpenType::NAME, scen_files);
+    write_files::create_stat_file(
+        file_name,
+        stats.start,
+        stats.goal,
+        stats.distance,
+        &astar_data,
+        astar_data.open.peak_bytes(),
+        finish
+    );
+}
+
+pub fn test_structur_per_map(map:&mut CustomMap){
+let maps = read_folders("maps");
+    let test_data = read_folders("test_data");
+    for scen_files in test_data{
+        let data_compare = match scen_files.strip_suffix(".scen"){
+            Some(data)=> {data}
+            None => {
+                panic!("Error, probablemente estás leyendo el directorio equivocado");
+            }
+        };
+        let maptowork  = match maps.get(data_compare){
+            Some(working_map)=> working_map,
+            None => {
+                println!("No se encontró mapa deseado.");
+                continue;
+            }
+        };
+
+        let map_dir = format!("maps/{}", maptowork);
+        let data_in_dir = format!("test_data/{}", scen_files);
+        *map = [[false; 2048]; 2048];
+        let (height, width) = read_map(map, &map_dir);
+        let data = read_lines(&data_in_dir);
+        let mut first_line = true;
+        for line in data{
+            if first_line {
+                first_line = false;
+                continue;
+            }
+            let stats = decode_scen(line);
+            run_map_struct_save::<BinaryHeapOpen>(map, stats, &scen_files);
+            run_map_struct_save::<RadixHeapOpen>(map, stats, &scen_files);
+            run_map_struct_save::<RadixAltOpen>(map, stats, &scen_files);
+            run_map_struct_save::<RadixAltRoundOpen>(map, stats, &scen_files);
+            run_map_struct_save::<VebOpen>(map, stats, &scen_files);
+            run_map_struct_save::<QuickHeapOpen>(map, stats, &scen_files);
+
+            /*
+            let ouput_path = format!("generated_output/{}-{}_{}-{}_{}.png",
+                &scen_files,
+                stats.start.0,
+                stats.start.1,
+                stats.goal.0,
+                stats.goal.1
+            );
+            map_visualization::visualize_final_state(
+                map,
+                width, height,
+                &astar_data.open, &astar_data.close,
+                stats.start, stats.goal,
+                &astar_data.path,
+                4,
+                &ouput_path
+            );
+            */
+        }
+        println!("Finish map: {}", data_compare);
+    }
 }
