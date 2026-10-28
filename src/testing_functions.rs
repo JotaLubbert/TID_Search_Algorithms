@@ -1,6 +1,7 @@
 use std::time::Instant;
 use std::collections::HashMap;
 use rand::{self, RngExt};
+use crate::timed::{self, Timed};
 use crate::{
     CustomMap,
     a_star::{a_star, Coords, SearchNode},
@@ -47,6 +48,8 @@ pub fn test_all_valid_points(map: &mut CustomMap) -> Vec<(u128, Vec<(u32, u32)>)
 
 // `C` es la estructura del closed y `label` el nombre de la subcarpeta en test_result/
 pub fn test_astar_correctnes<C: ClosedSet>(map: &mut CustomMap, label: &str) {
+    let sobrecosto = timed::calibrar();
+    println!("[{}] sobrecosto del cronómetro: {:.1} ns por medición", label, sobrecosto);
     let maps = read_folders("maps");
     let test_data = read_folders("test_data");
     for scen_files in test_data {
@@ -79,6 +82,8 @@ pub fn test_astar_correctnes<C: ClosedSet>(map: &mut CustomMap, label: &str) {
                 continue;
             }
             let stats = decode_scen(line);
+
+            // corrida limpia: mide execution_time
             let star_time = Instant::now();
             let astar_data = match a_star::<C, _>(stats.start, stats.goal, map, euclidean_distance) {
                 Some(d) => d,
@@ -88,16 +93,65 @@ pub fn test_astar_correctnes<C: ClosedSet>(map: &mut CustomMap, label: &str) {
                 }
             };
             let finish = star_time.elapsed().as_micros();
-            let file_name = scen_files.clone();
+
+            // segunda corrida: cronómetro en cada get e insert del Closed
+            timed::reset_stats();
+            let _ = a_star::<Timed<C>, _>(stats.start, stats.goal, map, euclidean_distance);
+            let closed = timed::take_stats();
+
             write_files::create_stat_file(
                 label,
-                file_name,
+                scen_files.clone(),
                 stats.start,
                 stats.goal,
                 stats.distance,
                 &astar_data,
                 finish,
+                closed,
             );
         }
+    }
+}
+
+pub fn test_one_map<C: ClosedSet>(map: &mut CustomMap, label: &str, scen_name: &str) {
+    timed::calibrar();
+    let map_name = scen_name.strip_suffix(".scen").expect("el nombre debe terminar en .scen");
+    let map_dir = format!("maps/{}", map_name);
+    let data_in_dir = format!("test_data/{}", scen_name);
+
+    // borra el resultado anterior para no duplicar filas
+    let _ = std::fs::remove_file(format!("test_result/{}/{}.tsv", label, scen_name));
+
+    *map = [[false; 2048]; 2048];
+    let (_height, _width) = read_map(map, &map_dir);
+    for (i, line) in read_lines(&data_in_dir).into_iter().enumerate() {
+        if i == 0 || line.trim().is_empty() {
+            continue;
+        }
+        let stats = decode_scen(line);
+        let star_time = Instant::now();
+        let astar_data = match a_star::<C, _>(stats.start, stats.goal, map, euclidean_distance) {
+            Some(d) => d,
+            None => {
+                println!("Sin camino en {}: {:?} -> {:?}", scen_name, stats.start, stats.goal);
+                continue;
+            }
+        };
+        let finish = star_time.elapsed().as_micros();
+
+        timed::reset_stats();
+        let _ = a_star::<Timed<C>, _>(stats.start, stats.goal, map, euclidean_distance);
+        let closed = timed::take_stats();
+
+        write_files::create_stat_file(
+            label,
+            scen_name.to_string(),
+            stats.start,
+            stats.goal,
+            stats.distance,
+            &astar_data,
+            finish,
+            closed,
+        );
     }
 }

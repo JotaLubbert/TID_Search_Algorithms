@@ -1,70 +1,105 @@
-use std::fs;
-use std::{collections::HashSet, fs::read_to_string};
+use std::mem::size_of;
+use crate::a_star::{Coords, SearchNode};
+use crate::closed_set::ClosedSet;
 
-use crate::CustomMap;
-#[derive(Clone, Copy, Debug)]
-pub struct MapStats{
-    pub start: (u32, u32),
-    pub goal: (u32, u32),
-    pub distance: f64,
+// dist = 0 -> casilla vacía; si no, distancia al bucket ideal + 1
+#[derive(Clone, Copy)]
+struct Slot {
+    node: SearchNode,
+    dist: u32,
 }
 
-pub fn is_travesable(c: u8)->bool{
-    return matches!(c, b'.' | b'G' | b'S');
+const EMPTY: Slot = Slot {
+    node: SearchNode { coords: (0, 0), g: 0.0, _h: 0.0, f: 0.0, parent: None },
+    dist: 0,
+};
+
+pub struct RobinHood {
+    slots: Vec<Slot>,
+    len: usize,
 }
 
-pub fn read_lines(path:&str)-> Vec<String>{
-    read_to_string(path).unwrap() // panic on possible file-reading errors
-        .lines()  // split the string into an iterator of string slices
-        .map(String::from)  // make each slice into a string
-        .collect()  // gather them together into a vector
+#[inline]
+fn hash(c: Coords) -> usize {
+    let k = ((c.1 as u64) << 32) | c.0 as u64;
+    (k.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 32) as usize
 }
 
-pub fn read_map(arr:&mut CustomMap, file_directory: &str)->(u32, u32){
-    let lines: Vec<String> = read_lines(file_directory);
-    let mut height: u32 = 0;
-    let mut width: u32 = 0;
-    for (line, text) in lines.iter().enumerate() {
-        if line == 1 {
-            height = text[7..].parse::<u32>().unwrap();
-            continue;
-        } else if line == 2{
-            width = text[6..].parse::<u32>().unwrap();
-            continue;
-        } else if line < 4{
-            continue;
-        }
-        for (index, characters) in text.chars().enumerate(){
-            let ascii =  characters as u8;
-            arr[line-4][index] = is_travesable(ascii);
+impl RobinHood {
+    fn find(&self, c: Coords) -> Option<usize> {
+        let mask = self.slots.len() - 1;
+        let mut idx = hash(c) & mask;
+        let mut dist = 1;
+        loop {
+            let s = &self.slots[idx];
+            // vacía, o su dist es menor
+            if s.dist == 0 || s.dist < dist {
+                return None;
+            }
+            if s.node.coords == c {
+                return Some(idx);
+            }
+            idx = (idx + 1) & mask;
+            dist += 1;
         }
     }
-    return (height, width);
-}
 
-pub fn decode_scen(line: String)->MapStats{
-    let fields: Vec<&str> = line.split('\t').map(|f| f.trim()).collect();
-
-    let start_x = fields[4].parse::<u32>().unwrap();
-    let start_y = fields[5].parse::<u32>().unwrap();
-    let goal_x = fields[6].parse::<u32>().unwrap();
-    let goal_y= fields[7].parse::<u32>().unwrap();
-    let distance: f64 = fields[8].parse::<f64>().unwrap();
-
-    return MapStats{
-        start: (start_x, start_y),
-        goal: (goal_x, goal_y),
-        distance: distance
-    };
-}
-
-pub fn read_folders(folder: &str)->HashSet<String>{
-    let paths = fs::read_dir(folder).unwrap();
-    let mut files_found: HashSet<String> = HashSet::new();
-    for file in paths{
-        let name = file.unwrap();
-        let name = name.file_name().to_str().unwrap().to_string();
-        files_found.insert(name);
+    // inserta un nodo que se sabe que no existe
+    fn insert_new(&mut self, node: SearchNode) {
+        let mask = self.slots.len() - 1;
+        let mut idx = hash(node.coords) & mask;
+        let mut carry = Slot { node, dist: 1 };
+        loop {
+            let s = &mut self.slots[idx];
+            if s.dist == 0 {
+                *s = carry;
+                self.len += 1;
+                return;
+            }
+            // intercambio de nodos
+            if s.dist < carry.dist {
+                std::mem::swap(s, &mut carry);
+            }
+            idx = (idx + 1) & mask;
+            carry.dist += 1;
+        }
     }
-    return files_found;
+
+    fn grow(&mut self) {
+        let new_len = self.slots.len() * 2;
+        let old = std::mem::replace(&mut self.slots, vec![EMPTY; new_len]);
+        self.len = 0;
+        for s in old {
+            if s.dist != 0 {
+                self.insert_new(s.node);
+            }
+        }
+    }
+}
+
+impl ClosedSet for RobinHood {
+    fn new() -> Self {
+        RobinHood { slots: vec![EMPTY; 16], len: 0 }
+    }
+
+    fn get(&self, c: Coords) -> Option<&SearchNode> {
+        self.find(c).map(|i| &self.slots[i].node)
+    }
+
+    fn insert(&mut self, node: SearchNode) {
+        if let Some(i) = self.find(node.coords) {
+            self.slots[i].node = node; // actualiza g y parent
+            return;
+        }
+        // factor de carga máximo 7/8
+        if (self.len + 1) * 8 > self.slots.len() * 7 {
+            self.grow();
+        }
+        self.insert_new(node);
+    }
+
+    fn size_in_bytes(&self) -> usize {
+        size_of::<Self>() + self.slots.capacity() * size_of::<Slot>()
+    }
+    fn len(&self) -> usize { self.len }
 }

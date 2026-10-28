@@ -12,6 +12,8 @@ mod robin_hood;
 mod judy;
 use std::collections::HashMap;
 use crate::a_star::{Coords, SearchNode};
+mod benchmark;
+mod timed;
 
 type CustomMap = [[bool; 2048]; 2048];
 fn main() {
@@ -27,6 +29,12 @@ fn main() {
     testing_functions::test_astar_correctnes::<robin_hood::RobinHood>(&mut array, "robin_hood");
     testing_functions::test_astar_correctnes::<judy::Judy>(&mut array, "judy");
 
+
+    // benchmark::micro_directo();
+    // benchmark::bench_directo(&mut array, "brc201d.map.scen", 5, 100);
+
+
+    // testing_functions::test_one_map::<judy::Judy>(&mut array, "judy", "hrt000d.map.scen");
 
     // let mut total_time: u128 = 0;
     // for (time, path) in testing{
