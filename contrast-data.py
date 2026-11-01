@@ -6,10 +6,15 @@ matplotlib.use("Agg")  # solo guarda imágenes, no abre ventanas
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 from matplotlib.transforms import offset_copy
+from matplotlib.patches import Patch
 
 TSV_DIR = Path("test_result")
 OUT_DIR = Path("generated_output/comparacion")
 CACHE = OUT_DIR / "datos.pkl"
+#tiempo de la open medido por resta (cargo run --release -- open-time); no es una estructura
+OPEN_TIME_DIR = TSV_DIR / "open-time"
+#la parte de A* que no es la open, en los gráficos del tiempo de la open
+REST_GRAY = "#bdbcb5"
 BASELINE = "binary-heap"   # las demás estructuras se comparan contra esta
 MAPS_TO_PLOT = ["arena2", "den312d", "hrt201n", "orz900d"]
 N_BINS = 20                # tramos de largo de camino en los gráficos por mapa
@@ -59,8 +64,21 @@ STRUCTURE_STYLE = {
     #magenta oscuro y no el magenta de la paleta (#e87ba4), que se confunde con el naranja de RadixHeap.
     #Con este, los peores pares de la paleta siguen siendo los que ya había (naranja-amarillo)
     "quick-heap": ("QuickHeap", "#b8327a"),
+    #el mismo magenta de QuickHeap: es el mismo algoritmo sin SIMD, y se distingue por el patrón
+    #(STRUCTURE_PATTERN). Con 7 series ningún tono nuevo pasaba la validación sin agregar choques
+    "quick-heap-scalar": ("QuickHeapScalar", "#b8327a"),
 }
 SPARE_COLORS = ["#e87ba4"]  # siguiente color de la paleta, para una carpeta nueva
+
+#variantes que comparten el color de su estructura base: línea punteada en los gráficos de líneas
+#y rayas en las barras, así la identidad no depende solo del color
+STRUCTURE_PATTERN = {
+    "quick-heap-scalar": {"linestyle": (0, (4, 2)), "hatch": "////"},
+}
+
+
+def line_style(structure):
+    return STRUCTURE_PATTERN.get(structure, {}).get("linestyle", "-")
 
 INK = {"primary": "#0b0b0b", "secondary": "#52514e", "muted": "#898781",
        "grid": "#e1e0d9", "axis": "#c3c2b7", "surface": "#fcfcfb"}
@@ -116,7 +134,7 @@ def keep_reference_visible(ax):
     ax.set_ylim(min(y_min, 1 - 0.06 * span), max(y_max, 1 + 0.06 * span))
 
 
-def plot_series(ax, drawn, name, x, y, color, label, twin_label):
+def plot_series(ax, drawn, name, x, y, color, label, twin_label, linestyle="-"):
     #si otra estructura ya dibujó exactamente la misma curva, la nueva la taparía entera:
     #la de abajo se engrosa para que asome como un borde alrededor de la nueva, y la leyenda lo dice
     x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
@@ -124,9 +142,9 @@ def plot_series(ax, drawn, name, x, y, color, label, twin_label):
         if np.array_equal(other_x, x) and np.array_equal(other_y, y):
             other_line.set_linewidth(4.5)
             other_line.set_zorder(2)
-            ax.plot(x, y, color=color, label=twin_label(other), zorder=3)
+            ax.plot(x, y, color=color, label=twin_label(other), zorder=3, linestyle=linestyle)
             return
-    line, = ax.plot(x, y, color=color, label=label)
+    line, = ax.plot(x, y, color=color, label=label, linestyle=linestyle)
     drawn[name] = (x, y, line)
 
 
@@ -169,10 +187,12 @@ def read_tsvs(structures):
 
 def load_results():
     #una carpeta todavía vacía (estructura sin correr) no cuenta
-    structures = sorted(p.name for p in TSV_DIR.iterdir() if p.is_dir() and any(p.glob("*.tsv")))
+    #la carpeta del tiempo de la open no es una estructura: tiene otras columnas y se resume aparte
+    structures = sorted(p.name for p in TSV_DIR.iterdir()
+                        if p.is_dir() and p != OPEN_TIME_DIR and any(p.glob("*.tsv")))
     if BASELINE not in structures:
         raise ValueError(f"falta la carpeta de referencia {TSV_DIR / BASELINE}")
-    newest_tsv = max(t.stat().st_mtime for t in TSV_DIR.glob("*/*.tsv"))
+    newest_tsv = max(t.stat().st_mtime for s in structures for t in (TSV_DIR / s).glob("*.tsv"))
     #leer los TSV completos tarda; si nada cambió desde la última vez se reutiliza el caché
     if CACHE.exists() and CACHE.stat().st_mtime > newest_tsv:
         data = pd.read_pickle(CACHE)
@@ -327,7 +347,7 @@ def plot_map(data, map_name, styles):
             stats = stats[stats["count"] >= MIN_PER_BIN]
             x = centers[stats.index.astype(int)]
             plot_series(ax, drawn, label, x, stats["median"], color, label,
-                        lambda other, label=label: f"{label}\n(igual a {other})")
+                        lambda other, label=label: f"{label}\n(igual a {other})", line_style(structure))
             ends.append((x[-1], stats["median"].iloc[-1], label))
             medians[structure] = stats["median"]
         ax.set_title(title)
@@ -402,7 +422,7 @@ def plot_global(data, styles):
             #RadixAlt y RadixHeap expanden exactamente los mismos nodos (misma clave, mismo desempate):
             #plot_series evita que la segunda curva tape a la primera y lo dice en la leyenda
             plot_series(ax, drawn, label, np.quantile(values, fraction), fraction, color, text,
-                        lambda other, text=text: f"{text}\n(igual a {other})")
+                        lambda other, text=text: f"{text}\n(igual a {other})", line_style(structure))
         ax.set_xlim(min(lo, 0.95), max(hi, 1.05))
         ax.set_ylim(0, 1)
         ax.set_title(title)
@@ -454,7 +474,8 @@ def plot_by_open(data, styles):
     drawn, ends = {}, []
     for structure, (label, color) in others.items():
         y = table[structure].to_numpy()
-        plot_series(ax, drawn, label, x, y, color, label, lambda other, label=label: f"{label}\n(igual a {other})")
+        plot_series(ax, drawn, label, x, y, color, label, lambda other, label=label: f"{label}\n(igual a {other})",
+                    line_style(structure))
         #con pocos tamaños, un punto por tamaño ayuda a leerlo; el borde del color de fondo los separa si se cruzan
         ax.plot(x, y, linestyle="none", marker="o", markersize=6.5, color=color,
                 markeredgecolor=INK["surface"], markeredgewidth=1.2, zorder=4)
@@ -494,6 +515,14 @@ def plot_by_open(data, styles):
     print(f"guardado {out}")
 
 
+def add_hatches(bars, structures):
+    #las variantes que comparten color con su estructura base llevan rayas (del color del fondo)
+    for bar, structure in zip(bars, structures):
+        hatch = STRUCTURE_PATTERN.get(structure, {}).get("hatch")
+        if hatch:
+            bar.set_hatch(hatch)
+
+
 def label_bars(ax, x, values, texts, baseline=0):
     #el número va en la punta de cada barra, en tinta de texto y no en el color de la serie;
     #una barra que baja de la línea base (gana contra la referencia) lo lleva bajo la punta
@@ -530,8 +559,9 @@ def plot_by_difficulty(data, styles, levels, value_col, ratio_col, title, unit, 
         x = np.arange(len(names))
         y = values.loc[level, names].to_numpy()
         #el borde del color de fondo deja un espacio entre barras vecinas
-        ax_top.bar(x, y, width=0.72, color=[styles[s][1] for s in names],
-                   edgecolor=INK["surface"], linewidth=1, zorder=2)
+        bars = ax_top.bar(x, y, width=0.72, color=[styles[s][1] for s in names],
+                          edgecolor=INK["surface"], linewidth=1, zorder=2)
+        add_hatches(bars, names)
         label_bars(ax_top, x, y, [fmt_value(v) for v in y])
         ax_top.set_ylim(0, y.max() * 1.15)
         ax_top.set_xticks(x, [styles[s][0] for s in names], rotation=25, ha="right")
@@ -543,8 +573,9 @@ def plot_by_difficulty(data, styles, levels, value_col, ratio_col, title, unit, 
         x = np.arange(len(others))
         y = ratios.loc[level, others].to_numpy()
         ax_bottom.axhline(1, color=base_color, linewidth=1.2, zorder=3)
-        ax_bottom.bar(x, y - 1, bottom=1, width=0.72, color=[styles[s][1] for s in others],
-                      edgecolor=INK["surface"], linewidth=1, zorder=2)
+        bars = ax_bottom.bar(x, y - 1, bottom=1, width=0.72, color=[styles[s][1] for s in others],
+                             edgecolor=INK["surface"], linewidth=1, zorder=2)
+        add_hatches(bars, others)
         label_bars(ax_bottom, x, y, [fmt_number(v, 2) + "×" for v in y], baseline=1)
         ax_bottom.set_xticks(x, [styles[s][0] for s in others], rotation=25, ha="right")
         ax_bottom.set_title(f"{level}: relativo a {base_label} (línea = 1×)")
@@ -581,6 +612,80 @@ def plot_by_difficulty(data, styles, levels, value_col, ratio_col, title, unit, 
     print(f"guardado {out}")
 
 
+def summarize_open_time():
+    #tiempo de la open medido por resta: cada búsqueda se corre con la open real y otra vez con una
+    #open que repite los mismos nodos sin ordenar nada (ver open_time.rs); la diferencia es la open.
+    #Solo existe si se corrió `cargo run --release -- open-time`
+    files = sorted(OPEN_TIME_DIR.glob("*.tsv")) if OPEN_TIME_DIR.is_dir() else []
+    if not files:
+        return
+    frames = []
+    for tsv in files:
+        df = pd.read_csv(tsv, sep="\t")
+        df["map"] = tsv.name.removesuffix(".map.scen.tsv")
+        frames.append(df)
+    data = pd.concat(frames, ignore_index=True)
+    data["open_ns"] = data["real_ns"] - data["replay_ns"]
+    styles = structure_styles(sorted(data["structure"].unique()))
+
+    #promedio por camino: la suma de tiempos dividida por los caminos, así el porcentaje es el del
+    #tiempo total de la muestra (pesan más los caminos largos, que son los que más tardan)
+    g = data.groupby("structure")
+    caminos = g.size()
+    table = pd.DataFrame({
+        "caminos": caminos,
+        "total_ms_por_camino": g["real_ns"].sum() / caminos / 1e6,
+        "open_ms_por_camino": g["open_ns"].sum() / caminos / 1e6,
+    })
+    table["resto_ms_por_camino"] = table["total_ms_por_camino"] - table["open_ms_por_camino"]
+    table["open_pct"] = table["open_ms_por_camino"] / table["total_ms_por_camino"] * 100
+    table = table.loc[list(styles)]
+    table.rename(index=lambda s: styles[s][0]).to_csv(OUT_DIR / "tiempo_open.csv")
+    per_map = data.groupby(["map", "structure"]).agg(real_ns=("real_ns", "sum"), open_ns=("open_ns", "sum"))
+    per_map["open_pct"] = per_map["open_ns"] / per_map["real_ns"] * 100
+    per_map.to_csv(OUT_DIR / "tiempo_open_por_mapa.csv")
+    maps = sorted(data["map"].unique())
+    print(f"\nTiempo de la open por resta ({fmt_number(caminos.iloc[0])} caminos de {len(maps)} mapas)")
+    print(table.rename(index=lambda s: styles[s][0]).to_string(float_format=lambda v: f"{v:.4g}"))
+
+    #una barra por estructura: la open desde el cero (así se comparan sus largos) y el resto de A* después
+    fig, ax = plt.subplots(figsize=(11, 0.55 * len(table) + 2.4))
+    y = np.arange(len(table))[::-1]
+    for yi, (structure, row) in zip(y, table.iterrows()):
+        label, color = styles[structure]
+        bars = ax.barh(yi, row["open_ms_por_camino"], height=0.62, color=color,
+                       edgecolor=INK["surface"], linewidth=1, zorder=2)
+        add_hatches(bars, [structure])
+        ax.barh(yi, row["resto_ms_por_camino"], left=row["open_ms_por_camino"], height=0.62, color=REST_GRAY,
+                edgecolor=INK["surface"], linewidth=1, zorder=2)
+        ax.annotate(f"open {fmt_number(row['open_pct'], 0)}% · total {fmt_value(row['total_ms_por_camino'])} ms",
+                    xy=(row["total_ms_por_camino"], yi), xytext=(6, 0), textcoords="offset points",
+                    va="center", fontsize=9, color=INK["secondary"])
+    ax.set_yticks(y, [styles[s][0] for s in table.index])
+    ax.grid(axis="x")
+    ax.grid(axis="y", visible=False)
+    ax.set_xlim(0, table["total_ms_por_camino"].max() * 1.3)
+    ax.set_xlabel("Milisegundos por camino (promedio de la muestra)")
+    ax.set_title("Tiempo de A* por camino, separado en la open y el resto")
+    #la leyenda solo nombra el gris: la parte de color es la open, y cada estructura se nombra a la izquierda
+    ax.legend(handles=[Patch(facecolor=REST_GRAY, label="Resto de A*: generar sucesores, close y camino")],
+              loc="upper center", bbox_to_anchor=(0.5, 0), ncol=1, fontsize=8.5, labelcolor=INK["secondary"],
+              bbox_transform=offset_copy(ax.transAxes, fig=fig, y=-0.58, units="inches"))
+    fig.suptitle("Cuánto del tiempo de A* se va en la open", x=0.012, ha="left",
+                 fontsize=14, color=INK["primary"], y=0.985)
+    fig.text(0.012, 0.88,
+             "Cada búsqueda se corrió dos veces: con la open real y con una open que repite los mismos nodos sin ordenar "
+             "nada.\nLa diferencia es la open (la parte de color). "
+             f"{fmt_number(caminos.iloc[0])} caminos de {len(maps)} mapas: {', '.join(maps)}.",
+             fontsize=9.5, color=INK["secondary"], linespacing=1.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.86))
+    apply_tick_format(ax, "x")
+    out = OUT_DIR / "tiempo_open.png"
+    fig.savefig(out, dpi=160)
+    plt.close(fig)
+    print(f"guardado {out}")
+
+
 if __name__ == "__main__":
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     data = with_difficulty(load_results())
@@ -602,3 +707,4 @@ if __name__ == "__main__":
                        "Kilobytes por camino", "la memoria",
                        "Bajo 1× la estructura gana. La memoria es lo que reservaba la open al llegar a la meta.",
                        "memoria_por_dificultad.png")
+    summarize_open_time()

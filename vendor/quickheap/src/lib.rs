@@ -33,6 +33,8 @@ mod test;
 use std::marker::PhantomData;
 
 pub use simd::{Avx2, Avx512};
+// Agregado para el proyecto: backend sin SIMD (el mismo algoritmo, de a una clave)
+pub use simd::Scalar;
 
 /// Tag to use with [`ConfigurableSimdQuickHeap`] to use AVX-512 if it is available.
 #[cfg(not(target_feature = "avx512f"))]

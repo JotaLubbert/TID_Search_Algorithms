@@ -9,6 +9,7 @@ mod map_visualization;
 mod veb;
 mod radix_alt;
 mod memory_counter;
+mod open_time;
 
 type CustomMap = [[bool; 2048]; 2048];
 fn main() {
@@ -20,7 +21,13 @@ fn main() {
     // print!("{}ms", finish)
 
 
-    testing_functions::test_structur_per_map(&mut array);
+    //`cargo run --release` corre la comparación completa;
+    //`cargo run --release -- open-time` solo mide el tiempo de la open en OPEN_TIME_MAPS
+    if std::env::args().any(|arg| arg == "open-time") {
+        testing_functions::test_open_time_per_map(&mut array, testing_functions::OPEN_TIME_MAPS);
+    } else {
+        testing_functions::test_structur_per_map(&mut array);
+    }
 
 
     // let mut total_time: u128 = 0;

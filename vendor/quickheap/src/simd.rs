@@ -76,6 +76,14 @@ pub fn push_position<T: Copy + Ord, S: SimdElem<T>>(pivots: &Vec<T>, t: T) -> us
     // Baseline:
     // return pivots.iter().map(|x| (t <= **x) as usize).sum::<usize>();
 
+    // Agregado para el proyecto: con un solo carril (backend Scalar) se recorren los pivotes uno por
+    // uno y se para en el primero <= t. Es la misma capa que da el conteo de abajo (los pivotes son
+    // decrecientes), pero con la salida temprana el compilador no convierte el loop en SIMD por su
+    // cuenta. S::L es constante, así que para Avx2 este if desaparece al compilar.
+    if S::L == 1 && pivots.len() <= 64 {
+        return pivots.iter().position(|&p| !(t < p)).unwrap_or(pivots.len());
+    }
+
     if pivots.len() <= 64 {
         let t_simd = S::splat(t);
 
@@ -932,3 +940,87 @@ transmute([
 0, 0, 0, 0, 0, 0, 0, 0, //1111
 ])
 };
+
+// ── Agregado para el proyecto (no está en el crate original) ──────────────────
+
+/// Backend sin SIMD: el mismo algoritmo de la cola, pero procesando una clave por paso (`L = 1`).
+/// Cada método hace con un solo número lo que [`Avx2`] hace con 4 a la vez, y al repartir una
+/// capa decide con un `if` en vez de una máscara y una permutación.
+pub struct Scalar;
+
+impl SimdElem<u64> for Scalar {
+    const L: usize = 1;
+    const MAX: u64 = u64::MAX;
+    type Simd = u64;
+
+    #[inline(always)]
+    fn splat(v: u64) -> u64 {
+        v
+    }
+
+    #[inline(always)]
+    unsafe fn simd_from_slice(slice: &[u64]) -> u64 {
+        unsafe { *slice.as_ptr() }
+    }
+
+    /// Igual que en Avx2: el bit 0 dice si `a < b`.
+    #[inline(always)]
+    fn simd_lt_bitmask(a: u64, b: u64) -> u64 {
+        (a < b) as u64
+    }
+
+    #[inline(always)]
+    fn lane_indices() -> u64 {
+        0
+    }
+
+    #[inline(always)]
+    fn from_usize(n: usize) -> u64 {
+        n as u64
+    }
+
+    #[inline(always)]
+    fn wrapping_add_one(t: u64) -> u64 {
+        t.wrapping_add(1)
+    }
+
+    /// Igual que en Avx2: las claves `>= threshold` van a `v` y las menores a `w`,
+    /// pero de a una y con un `if`.
+    #[inline(always)]
+    unsafe fn partition_fast(
+        val: u64,
+        threshold: u64,
+        v: &mut [u64],
+        v_idx: &mut usize,
+        w: &mut [u64],
+        w_idx: &mut usize,
+    ) {
+        unsafe {
+            if val < threshold {
+                *w.get_unchecked_mut(*w_idx) = val;
+                *w_idx += 1;
+            } else {
+                *v.get_unchecked_mut(*v_idx) = val;
+                *v_idx += 1;
+            }
+        }
+    }
+
+    /// Con un solo carril, la clave está en rango si `len > 0`.
+    #[inline(always)]
+    unsafe fn partition_slow(
+        val: u64,
+        len: u64,
+        threshold: u64,
+        v: &mut [u64],
+        v_idx: &mut usize,
+        w: &mut [u64],
+        w_idx: &mut usize,
+    ) {
+        if len > 0 {
+            unsafe { <Self as SimdElem<u64>>::partition_fast(val, threshold, v, v_idx, w, w_idx) }
+        }
+    }
+}
+
+// ── Fin de lo agregado ────────────────────────────────────────────────────────

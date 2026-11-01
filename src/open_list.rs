@@ -7,7 +7,7 @@ use std::mem::size_of;
 use crate::a_star::{SearchNode, hashmap_heap_bytes};
 use crate::radix_alt::RadixHeap;
 use crate::veb::{FastHashMap, VebTree};
-use quickheap::SimdQuickHeap;
+use quickheap::{Avx2, ConfigurableSimdQuickHeap, Scalar, SimdElem};
 
 //Implementación base: BinaryHeap es un max-heap, así que con Reverse queda como min-heap por f
 pub type BinaryHeapOpen = BinaryHeap<Reverse<SearchNode>>;
@@ -59,11 +59,32 @@ const ROUND_SCALE: f64 = (1u64 << 20) as f64;
 //- la f va redondeada a 2^-19, igual que en RadixAltRound: con la octil es exacta y cabe hasta f < 8.192
 //- el índice hace que no haya dos entradas iguales: los empates salen por índice, siempre en el mismo
 //  orden, aunque los pivotes se elijan al azar
-#[derive(Default)]
-pub struct QuickHeapOpen {
-    heap: SimdQuickHeap<u64>,
+//S elige cómo compara la cola: Avx2 (4 claves por instrucción) o Scalar (el mismo algoritmo de a una
+//clave, agregado en vendor/quickheap). Así la diferencia entre las dos es solo el SIMD.
+pub struct QuickHeapBase<S: QuickBackend> {
+    heap: ConfigurableSimdQuickHeap<u64, S>,
     slots: Vec<SearchNode>,
     free_slots: Vec<u32>,
+}
+pub type QuickHeapOpen = QuickHeapBase<Avx2>;
+pub type QuickHeapScalarOpen = QuickHeapBase<Scalar>;
+
+//un backend de la cola y la carpeta donde van sus resultados
+pub trait QuickBackend: SimdElem<u64> {
+    const NAME: &'static str;
+}
+impl QuickBackend for Avx2 {
+    const NAME: &'static str = "quick-heap";
+}
+impl QuickBackend for Scalar {
+    const NAME: &'static str = "quick-heap-scalar";
+}
+
+//a mano y no con derive: derive le exigiría Default al backend, que es solo una marca de tipo
+impl<S: QuickBackend> Default for QuickHeapBase<S> {
+    fn default() -> Self {
+        Self { heap: ConfigurableSimdQuickHeap::default(), slots: Vec::new(), free_slots: Vec::new() }
+    }
 }
 
 const QUICK_SCALE: f64 = (1u64 << 19) as f64;
@@ -240,8 +261,8 @@ impl<const ROUNDED: bool> OpenList for RadixAltBase<ROUNDED> {
     }
 }
 
-impl OpenList for QuickHeapOpen{
-    const NAME: &'static str = "quick-heap";
+impl<S: QuickBackend> OpenList for QuickHeapBase<S>{
+    const NAME: &'static str = S::NAME;
     fn insert(&mut self, node: SearchNode) {
         let slot = match self.free_slots.pop() {
             Some(slot) => {
