@@ -20,26 +20,26 @@ pub fn read_lines(path:&str)-> Vec<String>{
         .collect()  // gather them together into a vector
 }
 
-pub fn read_map(arr:&mut CustomMap, file_directory: &str)->(u32, u32){
+pub fn read_map(arr: &mut CustomMap, file_directory: &str) -> (u32, u32) {
+    // Todo lo que queda fuera del mapa real debe ser no transitable: a_star y
+    // valid_succesors comparan contra 2048, así que este reseteo es parte de la garantía.
+    for fila in arr.iter_mut() {
+        fila.fill(false);
+    }
     let lines: Vec<String> = read_lines(file_directory);
-    let mut height: u32 = 0;
-    let mut width: u32 = 0;
-    for (line, text) in lines.iter().enumerate() {
-        if line == 1 {
-            height = text[7..].parse::<u32>().unwrap();
-            continue;
-        } else if line == 2{
-            width = text[6..].parse::<u32>().unwrap();
-            continue;
-        } else if line < 4{
-            continue;
-        }
-        for (index, characters) in text.chars().enumerate(){
-            let ascii =  characters as u8;
-            arr[line-4][index] = is_travesable(ascii);
+    let height: u32 = lines[1][7..].trim().parse().unwrap();
+    let width: u32 = lines[2][6..].trim().parse().unwrap();
+    assert!(
+        height <= 2048 && width <= 2048,
+        "mapa {} de {}x{}: excede el máximo soportado (2048x2048)",
+        file_directory, width, height
+    );
+    for (row, text) in lines.iter().skip(4).take(height as usize).enumerate() {
+        for (col, ch) in text.chars().take(width as usize).enumerate() {
+            arr[row][col] = is_travesable(ch as u8);
         }
     }
-    return (height, width);
+    (height, width)
 }
 
 pub fn decode_scen(line: String)->MapStats{

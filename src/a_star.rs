@@ -23,6 +23,8 @@ const MOVEMENT_OPTIONS: [(i32, i32, f64); 8] = [
     (1, 1, COSTO_DIAGONAL),
 ];
 
+const CORR: f64 = 1e-9;
+
 #[derive(Clone, Copy, Debug)]
 pub struct SearchNode {
     pub coords: Coords,
@@ -37,14 +39,17 @@ impl SearchNode {
     }
 }
 impl PartialEq for SearchNode {
-    fn eq(&self, other: &Self) -> bool { self.f == other.f }
+    fn eq(&self, other: &Self) -> bool { self.f == other.f && self.g == other.g }
 }
 impl Eq for SearchNode {}
 impl PartialOrd for SearchNode {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> { Some(self.cmp(other)) }
 }
 impl Ord for SearchNode {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering { self.f.total_cmp(&other.f) }
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // menor f primero; a igual f, mayor g primero (el heap usa Reverse)
+        self.f.total_cmp(&other.f).then_with(|| other.g.total_cmp(&self.g))
+    }
 }
 
 pub struct AStarResults {
@@ -91,8 +96,8 @@ fn buckets_for(capacity: usize) -> usize {
 }
 
 // pública: la usa el impl de ClosedSet para HashMap
-pub fn close_size_in_bytes(close: &HashMap<Coords, SearchNode>) -> usize {
-    let base = size_of::<HashMap<Coords, SearchNode>>();
+pub fn close_size_in_bytes<S>(close: &HashMap<Coords, SearchNode, S>) -> usize {
+    let base = size_of::<HashMap<Coords, SearchNode, S>>();
     if close.capacity() == 0 {
         return base;
     }
@@ -202,7 +207,7 @@ where
             let tentative_g = current_g + *cost;
             let existing_g = close.get(*neighbor).map(|n| n.g).unwrap_or(f64::INFINITY);
 
-            if tentative_g < existing_g {
+            if tentative_g < existing_g - CORR {
                 let h = type_of_distance(*neighbor, goal);
                 let neighbor_node = SearchNode::new(*neighbor, tentative_g, h, Some(current.coords));
                 close.insert(neighbor_node);

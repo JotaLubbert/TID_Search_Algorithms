@@ -1,22 +1,31 @@
 mod a_star;
+mod benchmark;
+mod closed_set;
+mod distances_types;
+mod hashing;      // nuevo
+mod judy;
+mod map_visualization;
 mod read_files;
-use std::time::Instant;
-use crate::read_files::{decode_scen, read_lines};
+mod robin_hood;
 mod search_functions;
 mod testing_functions;
+mod timed;
 mod write_files;
-mod distances_types;
-mod map_visualization;
-mod closed_set;
-mod robin_hood;
-mod judy;
+
 use std::collections::HashMap;
 use crate::a_star::{Coords, SearchNode};
-mod benchmark;
-mod timed;
+use crate::hashing::CoordBuild;
+use crate::judy::Judy;
+use crate::robin_hood::{OldHash, RobinHood, SameHash};
 
 type CustomMap = [[bool; 2048]; 2048];
 fn main() {
+
+    if cfg!(debug_assertions) {
+        eprintln!("ERROR: compilado sin optimizaciones. Ejecuta con `cargo run --release`: en debug los tiempos no son comparables.");
+        std::process::exit(1);
+    }
+
     let mut array: Box<CustomMap> = vec![[false; 2048]; 2048].into_boxed_slice().try_into().unwrap();
     // read_files::read_map(&mut array, "maps/arena2.map");
     // let star_time = Instant::now();
@@ -26,8 +35,11 @@ fn main() {
 
 
     testing_functions::test_astar_correctnes::<HashMap<Coords, SearchNode>>(&mut array, "hashmap");
-    testing_functions::test_astar_correctnes::<robin_hood::RobinHood>(&mut array, "robin_hood");
+    testing_functions::test_astar_correctnes::<robin_hood::RobinHood<OldHash>>(&mut array, "robin_hood");
     testing_functions::test_astar_correctnes::<judy::Judy>(&mut array, "judy");
+    
+    testing_functions::test_astar_correctnes::<HashMap<Coords, SearchNode, CoordBuild>>(&mut array, "hashmap_hash_propio");
+    testing_functions::test_astar_correctnes::<RobinHood<SameHash>>(&mut array, "robin_hood_hash_propio");
 
 
     // benchmark::micro_directo();
