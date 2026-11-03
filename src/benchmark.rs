@@ -8,7 +8,7 @@ use crate::closed_set::ClosedSet;
 use crate::distances_types::euclidean_distance;
 use crate::judy::Judy;
 use crate::read_files::{decode_scen, read_lines, read_map, MapStats};
-use crate::robin_hood::{OldHash, RobinHood};
+use crate::robin_hood::RobinHood;
 
 const NOMBRES: [&str; 3] = ["hashmap", "robin_hood", "judy"];
 
@@ -65,7 +65,7 @@ fn micro_patron(nombre: &str, keys: &[Coords], misses: &[Coords], reps: usize) {
             let idx = (k + rep) % 3; // se rota el orden para que ninguna estructura siempre vaya primero
             let r = match idx {
                 0 => micro_una::<HashMap<Coords, SearchNode>>(keys, misses),
-                1 => micro_una::<RobinHood<OldHash>>(keys, misses),
+                1 => micro_una::<RobinHood>(keys, misses),
                 _ => micro_una::<Judy>(keys, misses),
             };
             if rep > 0 {
@@ -146,7 +146,7 @@ pub fn bench_directo(map: &mut CustomMap, scen_name: &str, reps: usize, max_esce
                 let idx = (k + rep) % 3;
                 let r = match idx {
                     0 => una_corrida::<HashMap<Coords, SearchNode>>(map, s),
-                    1 => una_corrida::<RobinHood<OldHash>>(map, s),
+                    1 => una_corrida::<RobinHood>(map, s),
                     _ => una_corrida::<Judy>(map, s),
                 };
                 match r {

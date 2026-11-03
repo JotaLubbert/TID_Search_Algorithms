@@ -2,7 +2,7 @@ mod a_star;
 mod benchmark;
 mod closed_set;
 mod distances_types;
-mod hashing;      // nuevo
+mod hasher;
 mod judy;
 mod map_visualization;
 mod read_files;
@@ -14,9 +14,9 @@ mod write_files;
 
 use std::collections::HashMap;
 use crate::a_star::{Coords, SearchNode};
-use crate::hashing::CoordBuild;
+use crate::hasher::CoordBuild;
 use crate::judy::Judy;
-use crate::robin_hood::{OldHash, RobinHood, SameHash};
+use crate::robin_hood::RobinHood;
 
 type CustomMap = [[bool; 2048]; 2048];
 fn main() {
@@ -35,11 +35,9 @@ fn main() {
 
 
     testing_functions::test_astar_correctnes::<HashMap<Coords, SearchNode>>(&mut array, "hashmap");
-    testing_functions::test_astar_correctnes::<robin_hood::RobinHood<OldHash>>(&mut array, "robin_hood");
-    testing_functions::test_astar_correctnes::<judy::Judy>(&mut array, "judy");
-    
-    testing_functions::test_astar_correctnes::<HashMap<Coords, SearchNode, CoordBuild>>(&mut array, "hashmap_hash_propio");
-    testing_functions::test_astar_correctnes::<RobinHood<SameHash>>(&mut array, "robin_hood_hash_propio");
+    testing_functions::test_astar_correctnes::<HashMap<Coords, SearchNode, CoordBuild>>(&mut array, "hashmap_hash_robin");
+    testing_functions::test_astar_correctnes::<RobinHood>(&mut array, "robin_hood");
+    testing_functions::test_astar_correctnes::<Judy>(&mut array, "judy");
 
 
     // benchmark::micro_directo();
