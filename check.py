@@ -4,6 +4,9 @@ from pathlib import Path
 base = Path("test_result/hashmap")
 cols = ["actual_distance", "path_len", "expansions", "generated", "path"]
 
+import sys
+GRUPO = sys.argv[1] if len(sys.argv) > 1 else "tradicionales" 
+
 for other in ["robin_hood", "judy"]:
     print(f"--- hashmap vs {other} ---")
     for f in sorted(base.iterdir()):

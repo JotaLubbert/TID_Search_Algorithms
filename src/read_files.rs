@@ -21,8 +21,6 @@ pub fn read_lines(path:&str)-> Vec<String>{
 }
 
 pub fn read_map(arr: &mut CustomMap, file_directory: &str) -> (u32, u32) {
-    // Todo lo que queda fuera del mapa real debe ser no transitable: a_star y
-    // valid_succesors comparan contra 2048, así que este reseteo es parte de la garantía.
     for fila in arr.iter_mut() {
         fila.fill(false);
     }

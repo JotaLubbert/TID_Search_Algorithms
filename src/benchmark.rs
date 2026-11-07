@@ -2,16 +2,24 @@ use std::collections::HashMap;
 use std::hint::black_box;
 use std::time::Instant;
 
-use crate::CustomMap;
 use crate::a_star::{a_star, Coords, SearchNode};
 use crate::closed_set::ClosedSet;
 use crate::distances_types::euclidean_distance;
+use crate::hasher::CoordBuild;
 use crate::judy::Judy;
 use crate::read_files::{decode_scen, read_lines, read_map, MapStats};
 use crate::robin_hood::RobinHood;
+use crate::testing_functions::carpetas_grupo;
+use crate::CustomMap;
 
-const NOMBRES: [&str; 3] = ["hashmap", "robin_hood", "judy"];
+// HashMap con SipHash (baseline) y HashMap con el hash de Robin Hood
+type HmSip = HashMap<Coords, SearchNode>;
+type HmRobin = HashMap<Coords, SearchNode, CoordBuild>;
 
+const NOMBRES: [&str; 4] = ["hashmap", "hashmap_hash_robin", "robin_hood", "judy"];
+const N: usize = 4;
+
+// ---------- generador determinista: las estructuras reciben exactamente las mismas claves ----------
 struct Xor(u64);
 impl Xor {
     fn next(&mut self) -> u64 {
@@ -27,8 +35,6 @@ fn mediana(v: &mut Vec<u128>) -> u128 {
     v[v.len() / 2]
 }
 
-
-// solo las operaciones del Closed (sin A*, sin heap)
 fn micro_una<C: ClosedSet>(keys: &[Coords], misses: &[Coords]) -> (u128, u128, u128) {
     let t = Instant::now();
     let mut c = C::new();
@@ -58,14 +64,15 @@ fn micro_una<C: ClosedSet>(keys: &[Coords], misses: &[Coords]) -> (u128, u128, u
 }
 
 fn micro_patron(nombre: &str, keys: &[Coords], misses: &[Coords], reps: usize) {
-    // tiempos[estructura][operacion] = lista de repeticiones
-    let mut t = vec![vec![Vec::new(); 3]; 3];
+    // t[estructura][operacion] = lista de repeticiones
+    let mut t = vec![vec![Vec::new(); 3]; N];
     for rep in 0..=reps {
-        for k in 0..3 {
-            let idx = (k + rep) % 3; // se rota el orden para que ninguna estructura siempre vaya primero
+        for k in 0..N {
+            let idx = (k + rep) % N; // se rota el orden: ninguna estructura va siempre primero
             let r = match idx {
-                0 => micro_una::<HashMap<Coords, SearchNode>>(keys, misses),
-                1 => micro_una::<RobinHood>(keys, misses),
+                0 => micro_una::<HmSip>(keys, misses),
+                1 => micro_una::<HmRobin>(keys, misses),
+                2 => micro_una::<RobinHood>(keys, misses),
                 _ => micro_una::<Judy>(keys, misses),
             };
             if rep > 0 {
@@ -76,17 +83,31 @@ fn micro_patron(nombre: &str, keys: &[Coords], misses: &[Coords], reps: usize) {
             }
         }
     }
-    println!("\n[{}]  {} claves, {} consultas fallidas, mediana de {} repeticiones", nombre, keys.len(), misses.len(), reps);
-    println!("{:<12} {:>14} {:>14} {:>14}", "estructura", "insert (ns/op)", "get acierto", "get fallo");
-    let base: Vec<f64> = (0..3).map(|o| mediana(&mut t[0][o].clone()) as f64).collect();
-    for i in 0..3 {
-        let m: Vec<u128> = (0..3).map(|o| mediana(&mut t[i][o].clone())).collect();
-        let nsop = [m[0] as f64 / keys.len() as f64, m[1] as f64 / keys.len() as f64, m[2] as f64 / misses.len() as f64];
-        let pct = |o: usize| (m[o] as f64 - base[o]) / base[o] * 100.0;
-        if i == 0 {
-            println!("{:<12} {:>14.1} {:>14.1} {:>14.1}", NOMBRES[i], nsop[0], nsop[1], nsop[2]);
-        } else {
-            println!("{:<12} {:>7.1} ({:+.0}%) {:>7.1} ({:+.0}%) {:>7.1} ({:+.0}%)", NOMBRES[i], nsop[0], pct(0), nsop[1], pct(1), nsop[2], pct(2));
+    println!(
+        "\n[{}]  {} claves, {} consultas fallidas, mediana de {} repeticiones",
+        nombre,
+        keys.len(),
+        misses.len(),
+        reps
+    );
+    // med[estructura][operacion] = mediana en ns totales
+    let med: Vec<Vec<f64>> = (0..N)
+        .map(|i| (0..3).map(|o| mediana(&mut t[i][o].clone()) as f64).collect())
+        .collect();
+    let ops = [keys.len() as f64, keys.len() as f64, misses.len() as f64];
+    for refi in [0usize, 1usize] {
+        println!("referencia: {}", NOMBRES[refi]);
+        println!("{:<20} {:>16} {:>16} {:>16}", "estructura", "insert (ns/op)", "get acierto", "get fallo");
+        for i in 0..N {
+            let celda = |o: usize| {
+                let ns = med[i][o] / ops[o];
+                if i == refi {
+                    format!("{:.1}", ns)
+                } else {
+                    format!("{:.1} ({:+.0}%)", ns, (med[i][o] / med[refi][o] - 1.0) * 100.0)
+                }
+            };
+            println!("{:<20} {:>16} {:>16} {:>16}", NOMBRES[i], celda(0), celda(1), celda(2));
         }
     }
 }
@@ -113,8 +134,6 @@ pub fn micro_directo() {
     micro_patron("frente de onda", &keys_b, &miss_b, 5);
 }
 
-
-// las tres estructuras sobre los mismos escenarios, intercaladas
 fn una_corrida<C: ClosedSet>(map: &CustomMap, s: &MapStats) -> Option<(u128, f64, u64, u64)> {
     let t = Instant::now();
     let r = a_star::<C, _>(s.start, s.goal, map, euclidean_distance)?;
@@ -123,36 +142,45 @@ fn una_corrida<C: ClosedSet>(map: &CustomMap, s: &MapStats) -> Option<(u128, f64
     Some((ns, r.final_dis, r.expansions, r.generated))
 }
 
-pub fn bench_directo(map: &mut CustomMap, scen_name: &str, reps: usize, max_escenarios: usize) {
+pub fn bench_directo(map: &mut CustomMap, grupo: &str, scen_name: &str, reps: usize, max_escenarios: usize) {
+    let (scen_dir, maps_dir) = carpetas_grupo(grupo);
     let map_name = scen_name.strip_suffix(".scen").expect("el nombre debe terminar en .scen");
-    *map = [[false; 2048]; 2048];
-    read_map(map, &format!("maps/{}", map_name));
-    let lines: Vec<String> = read_lines(&format!("test_data/{}", scen_name))
-        .into_iter().skip(1).filter(|l| !l.trim().is_empty()).collect();
+    read_map(map, &format!("{}/{}", maps_dir, map_name));
+    let lines: Vec<String> = read_lines(&format!("{}/{}", scen_dir, scen_name))
+        .into_iter()
+        .skip(1)
+        .filter(|l| !l.trim().is_empty())
+        .collect();
     // se reparten los escenarios usados a lo largo de todo el archivo
     let paso = (lines.len() / max_escenarios.max(1)).max(1);
     let escenarios: Vec<MapStats> = lines.into_iter().step_by(paso).take(max_escenarios).map(decode_scen).collect();
 
-    let mut total = [0u128; 3];
-    let mut tsv = String::from("start_x\tstart_y\tgoal_x\tgoal_y\texpansions\thashmap_ns\trobin_hood_ns\tjudy_ns\n");
+    let mut total = [0u128; N];
+    let mut tsv = String::from("start_x\tstart_y\tgoal_x\tgoal_y\texpansions");
+    for n in NOMBRES {
+        tsv.push_str(&format!("\t{}_ns", n));
+    }
+    tsv.push('\n');
     let mut distintos = 0;
     let mut usados = 0;
     for s in &escenarios {
-        let mut mejor = [u128::MAX; 3];
-        let mut datos: [Option<(f64, u64, u64)>; 3] = [None; 3];
+        let mut mejor = [u128::MAX; N];
+        let mut datos: [Option<(f64, u64, u64)>; N] = [None; N];
         let mut ok = true;
         for rep in 0..=reps {
-            for k in 0..3 {
-                let idx = (k + rep) % 3;
+            for k in 0..N {
+                let idx = (k + rep) % N; // orden rotado
                 let r = match idx {
-                    0 => una_corrida::<HashMap<Coords, SearchNode>>(map, s),
-                    1 => una_corrida::<RobinHood>(map, s),
+                    0 => una_corrida::<HmSip>(map, s),
+                    1 => una_corrida::<HmRobin>(map, s),
+                    2 => una_corrida::<RobinHood>(map, s),
                     _ => una_corrida::<Judy>(map, s),
                 };
                 match r {
                     Some((ns, d, e, g)) => {
                         if rep > 0 {
-                            mejor[idx] = mejor[idx].min(ns); // se queda con el mínimo: el menos afectado por ruido del sistema
+                            // el mínimo es lo menos afectado por ruido del sistema
+                            mejor[idx] = mejor[idx].min(ns);
                         }
                         datos[idx] = Some((d, e, g));
                     }
@@ -165,26 +193,42 @@ pub fn bench_directo(map: &mut CustomMap, scen_name: &str, reps: usize, max_esce
         }
         usados += 1;
         let (d0, e0, g0) = datos[0].unwrap();
-        for i in 1..3 {
+        for i in 1..N {
             let (d, e, g) = datos[i].unwrap();
             if e != e0 || g != g0 || (d - d0).abs() > 1e-9 {
                 distintos += 1;
             }
         }
-        for i in 0..3 {
+        for i in 0..N {
             total[i] += mejor[i];
         }
-        tsv.push_str(&format!("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n", s.start.0, s.start.1, s.goal.0, s.goal.1, e0, mejor[0], mejor[1], mejor[2]));
+        tsv.push_str(&format!("{}\t{}\t{}\t{}\t{}", s.start.0, s.start.1, s.goal.0, s.goal.1, e0));
+        for i in 0..N {
+            tsv.push_str(&format!("\t{}", mejor[i]));
+        }
+        tsv.push('\n');
     }
     let _ = std::fs::create_dir_all("test_result");
-    let _ = std::fs::write(format!("test_result/bench_directo_{}.tsv", map_name), tsv);
+    let _ = std::fs::write(format!("test_result/bench_directo_{}_{}.tsv", grupo, map_name), tsv);
 
-    println!("\n[A* completo] mapa {}  |  {} escenarios, mínimo de {} repeticiones por escenario", map_name, usados, reps);
-    println!("{:<12} {:>12} {:>16}", "estructura", "total (ms)", "vs hashmap");
-    for i in 0..3 {
+    println!(
+        "\n[A* completo] grupo {} · mapa {}  |  {} escenarios, mínimo de {} repeticiones por escenario",
+        grupo, map_name, usados, reps
+    );
+    println!("{:<20} {:>12} {:>14} {:>22}", "estructura", "total (ms)", "vs hashmap", "vs hashmap_hash_robin");
+    for i in 0..N {
         let ms = total[i] as f64 / 1e6;
-        let rel = if i == 0 { "base".to_string() } else { format!("{:+.1} %", (total[i] as f64 - total[0] as f64) / total[0] as f64 * 100.0) };
-        println!("{:<12} {:>12.1} {:>16}", NOMBRES[i], ms, rel);
+        let rel = |r: usize| {
+            if i == r {
+                "base".to_string()
+            } else {
+                format!("{:+.1} %", (total[i] as f64 / total[r] as f64 - 1.0) * 100.0)
+            }
+        };
+        println!("{:<20} {:>12.1} {:>14} {:>22}", NOMBRES[i], ms, rel(0), rel(1));
     }
-    println!("expansiones, generados y distancia idénticos entre estructuras: {}", if distintos == 0 { "SÍ".to_string() } else { format!("NO ({} diferencias)", distintos) });
+    println!(
+        "expansiones, generados y distancia idénticos entre estructuras: {}",
+        if distintos == 0 { "SÍ".to_string() } else { format!("NO ({} diferencias)", distintos) }
+    );
 }

@@ -22,7 +22,6 @@ const MOVEMENT_OPTIONS: [(i32, i32, f64); 8] = [
     (1, -1, COSTO_DIAGONAL),
     (1, 1, COSTO_DIAGONAL),
 ];
-
 const CORR: f64 = 1e-9;
 
 #[derive(Clone, Copy, Debug)]
@@ -41,6 +40,7 @@ impl SearchNode {
 impl PartialEq for SearchNode {
     fn eq(&self, other: &Self) -> bool { self.f == other.f && self.g == other.g }
 }
+
 impl Eq for SearchNode {}
 impl PartialOrd for SearchNode {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> { Some(self.cmp(other)) }

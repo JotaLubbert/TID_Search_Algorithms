@@ -1,44 +1,19 @@
-import pandas as pd
-from pathlib import Path
+from comun import *
 
-estructuras = ["hashmap", "robin_hood", "judy"]
-base = Path("test_result")
-
-totales = {e: 0 for e in estructuras}   # microsegundos
+tot = {e: 0 for e in ESTRUCTURAS}  # microsegundos
 escenarios = 0
-por_mapa = []
+for nombre, d in cargar(["execution_time"]):
+    escenarios += len(d[BASE])
+    for e in ESTRUCTURAS:
+        tot[e] += int(d[e]["execution_time"].sum())
 
-for f in sorted((base / "hashmap").iterdir()):
-    datos = {}
-    for e in estructuras:
-        g = base / e / f.name
-        if g.exists():
-            datos[e] = pd.read_csv(g, sep="\t", usecols=["execution_time"])["execution_time"]
-    if len(datos) < len(estructuras):
-        continue  # el mapa no está en las tres estructuras: no se compara
-    n = min(len(s) for s in datos.values())  # mismas filas para todas, aunque alguna esté incompleta
-    fila = {"mapa": f.name.replace(".map.scen.tsv", ""), "escenarios": n}
-    for e in estructuras:
-        t = int(datos[e][:n].sum())
-        totales[e] += t
-        fila[e] = t
-    escenarios += n
-    por_mapa.append(fila)
+if escenarios == 0:
+    sys.exit("Sin datos para este grupo.")
 
-print(f"Escenarios sumados: {escenarios:,}\n")
-print(f"{'estructura':<12} {'tiempo total':>14} {'vs hashmap':>14} {'diferencia':>14}")
-base_t = totales["hashmap"]
-for e in estructuras:
-    seg = totales[e] / 1e6
-    if e == "hashmap":
-        print(f"{e:<12} {seg:>12,.2f} s {'base':>14} {'':>14}")
-    else:
-        dif = (totales[e] - base_t) / 1e6
-        pct = (totales[e] / base_t - 1) * 100
-        print(f"{e:<12} {seg:>12,.2f} s {pct:>+13.1f}% {dif:>+12,.2f} s")
-
-print("\nPor mapa (segundos):")
-df = pd.DataFrame(por_mapa)
-for e in estructuras:
-    df[e] = df[e] / 1e6
-print(df.round(2).to_string(index=False))
+print(f"Grupo: {GRUPO} | escenarios sumados: {escenarios:,}\n")
+print(f"{'estructura':<20} {'tiempo total':>14} {'vs hashmap':>12} {'vs hashmap_hash_robin':>22}")
+for e in ESTRUCTURAS:
+    seg = tot[e] / 1e6
+    p0 = "base" if e == "hashmap" else f"{(tot[e] / tot['hashmap'] - 1) * 100:+.1f}%"
+    p1 = "base" if e == "hashmap_hash_robin" else f"{(tot[e] / tot['hashmap_hash_robin'] - 1) * 100:+.1f}%"
+    print(f"{e:<20} {seg:>12,.2f} s {p0:>12} {p1:>22}")

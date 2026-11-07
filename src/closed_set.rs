@@ -15,7 +15,7 @@ impl ClosedSet for HashMap<Coords, SearchNode> {
     fn get(&self, c: Coords) -> Option<&SearchNode> {HashMap::get(self, &c)}
     fn insert(&mut self, node: SearchNode) {HashMap::insert(self, node.coords, node);}
     fn len(&self) -> usize {HashMap::len(self)}
-    fn size_in_bytes(&self) -> usize {close_size_in_bytes(self)}
+    fn size_in_bytes(&self) -> usize { close_size_in_bytes(self)}
 }
 
 impl ClosedSet for HashMap<Coords, SearchNode, CoordBuild> {

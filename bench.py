@@ -1,34 +1,40 @@
-import pandas as pd
-from pathlib import Path
+from comun import *
 
-base = Path("test_result/hashmap")
-others = ["robin_hood", "judy"]
-cols = ["close_bytes", "execution_time"]  # execution_time está en microsegundos
+# Todas las comparaciones entre estructuras, a partir de los promedios por escenario
+# sobre los mismos escenarios. Uso: python bench.py [grupo] [-v]
+COLS = ["close_bytes", "execution_time"]
 
-for other in others:
-    print(f"\n=== {other} - hashmap (negativo = mejor) ===")
-    diffs = []
-    bases = []
-    for f in sorted(base.iterdir()):
-        g = Path("test_result") / other / f.name
-        if not g.exists():
-            continue
-        a = pd.read_csv(f, sep="\t")
-        b = pd.read_csv(g, sep="\t")
-        n = min(len(a), len(b))
-        a = a[cols][:n].reset_index(drop=True)
-        b = b[cols][:n].reset_index(drop=True)
-        d = b - a
-        pct = d.mean() / a.mean() * 100
-        print(f"{f.name:35s} n={n:5d}  "
-              f"close_bytes {d['close_bytes'].mean():+14.1f} ({pct['close_bytes']:+6.1f}%)  "
-              f"tiempo {d['execution_time'].mean():+12.1f} us ({pct['execution_time']:+6.1f}%)")
-        diffs.append(d)
-        bases.append(a)
-    if diffs:
-        total = pd.concat(diffs)
-        total_base = pd.concat(bases)
-        gpct = total.mean() / total_base.mean() * 100
-        print(f"{'GLOBAL':35s} n={len(total):5d}  "
-              f"close_bytes {total['close_bytes'].mean():+14.1f} ({gpct['close_bytes']:+6.1f}%)  "
-              f"tiempo {total['execution_time'].mean():+12.1f} us ({gpct['execution_time']:+6.1f}%)")
+suma = {e: pd.Series(0.0, index=COLS) for e in ESTRUCTURAS}
+n_total = 0
+for nombre, d in cargar(COLS):
+    n_total += len(d[BASE])
+    for e in ESTRUCTURAS:
+        suma[e] += d[e][COLS].sum()
+    if VERBOSO:  # tiempo promedio por escenario de cada estructura, mapa por mapa
+        t = {e: d[e]["execution_time"].mean() for e in ESTRUCTURAS}
+        print(f"{nombre:35s} n={len(d[BASE]):6d}  " + "  ".join(f"{e}={t[e]:.0f}us" for e in ESTRUCTURAS))
+
+if n_total == 0:
+    sys.exit("Sin datos para este grupo.")
+
+media = {e: suma[e] / n_total for e in ESTRUCTURAS}
+
+print(f"\nGrupo: {GRUPO} | escenarios comparados: {n_total:,}\n")
+print("Promedios por escenario")
+print(f"{'estructura':<20} {'close_bytes':>14} {'tiempo (us)':>14}")
+for e in ESTRUCTURAS:
+    print(f"{e:<20} {media[e]['close_bytes']:>14,.0f} {media[e]['execution_time']:>14,.1f}")
+
+
+def matriz(titulo, col, formato):
+    print(f"\n{titulo}")
+    print("(fila frente a columna: negativo = la fila es mejor)")
+    print(f"{'':<20}" + "".join(f"{r:>20}" for r in ESTRUCTURAS))
+    for e in ESTRUCTURAS:
+        celdas = ["—" if e == r else formato(media[e][col], media[r][col]) for r in ESTRUCTURAS]
+        print(f"{e:<20}" + "".join(f"{c:>20}" for c in celdas))
+
+
+matriz("TIEMPO, diferencia relativa", "execution_time", lambda a, b: f"{(a / b - 1) * 100:+.1f}%")
+matriz("TIEMPO, diferencia en microsegundos", "execution_time", lambda a, b: f"{a - b:+,.0f} us")
+matriz("MEMORIA (close_bytes), diferencia relativa", "close_bytes", lambda a, b: f"{(a / b - 1) * 100:+.1f}%")
