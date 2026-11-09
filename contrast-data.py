@@ -11,8 +11,6 @@ from matplotlib.patches import Patch
 TSV_DIR = Path("test_result")
 OUT_DIR = Path("generated_output/comparacion")
 CACHE = OUT_DIR / "datos.pkl"
-#tiempo de la open medido por resta (cargo run --release -- open-time); no es una estructura
-OPEN_TIME_DIR = TSV_DIR / "open-time"
 #la parte de A* que no es la open, en los gráficos del tiempo de la open
 REST_GRAY = "#bdbcb5"
 BASELINE = "binary-heap"   # las demás estructuras se comparan contra esta
@@ -48,6 +46,8 @@ SUMMARY_METRICS = {
 # path se deja fuera a propósito: es la columna más pesada y no se usa
 COLUMNS = ["start_x", "start_y", "goal_x", "goal_y", "expected_distance", "actual_distance",
            "path_len", "expansions", "generated", "open_bytes", "close_bytes", "execution_time"]
+#columnas que los TSV de corridas antiguas no traen: se leen solo si están
+OPTIONAL_COLUMNS = ["open_time_ns"]
 
 # el color sigue a la estructura, no a su posición: agregar o quitar una carpeta no repinta a las otras
 STRUCTURE_STYLE = {
@@ -177,7 +177,7 @@ def read_tsvs(structures):
     frames = []
     for structure in structures:
         for tsv in sorted((TSV_DIR / structure).glob("*.tsv")):
-            df = pd.read_csv(tsv, sep="\t", usecols=COLUMNS)
+            df = pd.read_csv(tsv, sep="\t", usecols=lambda c: c in COLUMNS or c in OPTIONAL_COLUMNS)
             df["map"] = tsv.name.removesuffix(".map.scen.tsv")
             df["row"] = np.arange(len(df))
             df["structure"] = structure
@@ -187,9 +187,7 @@ def read_tsvs(structures):
 
 def load_results():
     #una carpeta todavía vacía (estructura sin correr) no cuenta
-    #la carpeta del tiempo de la open no es una estructura: tiene otras columnas y se resume aparte
-    structures = sorted(p.name for p in TSV_DIR.iterdir()
-                        if p.is_dir() and p != OPEN_TIME_DIR and any(p.glob("*.tsv")))
+    structures = sorted(p.name for p in TSV_DIR.iterdir() if p.is_dir() and any(p.glob("*.tsv")))
     if BASELINE not in structures:
         raise ValueError(f"falta la carpeta de referencia {TSV_DIR / BASELINE}")
     newest_tsv = max(t.stat().st_mtime for s in structures for t in (TSV_DIR / s).glob("*.tsv"))
@@ -612,75 +610,152 @@ def plot_by_difficulty(data, styles, levels, value_col, ratio_col, title, unit, 
     print(f"guardado {out}")
 
 
-def summarize_open_time():
-    #tiempo de la open medido por resta: cada búsqueda se corre con la open real y otra vez con una
-    #open que repite los mismos nodos sin ordenar nada (ver open_time.rs); la diferencia es la open.
-    #Solo existe si se corrió `cargo run --release -- open-time`
-    files = sorted(OPEN_TIME_DIR.glob("*.tsv")) if OPEN_TIME_DIR.is_dir() else []
-    if not files:
-        return
-    frames = []
-    for tsv in files:
-        df = pd.read_csv(tsv, sep="\t")
-        df["map"] = tsv.name.removesuffix(".map.scen.tsv")
-        frames.append(df)
-    data = pd.concat(frames, ignore_index=True)
-    data["open_ns"] = data["real_ns"] - data["replay_ns"]
-    styles = structure_styles(sorted(data["structure"].unique()))
+#columnas de las tablas del tiempo de la open que son porcentajes: van con 2 decimales
+OPEN_PCT_COLUMNS = ["open_pct", "open_pct_ic95"]
 
-    #promedio por camino: la suma de tiempos dividida por los caminos, así el porcentaje es el del
-    #tiempo total de la muestra (pesan más los caminos largos, que son los que más tardan)
-    g = data.groupby("structure")
-    caminos = g.size()
+
+def open_time_table(data, styles):
+    #promedio por camino; el porcentaje es el cociente de los promedios, o sea, el del tiempo total
+    #(pesan más los caminos largos, que son los que más tardan)
+    df = data.assign(open_ms=data["open_time_ns"] / 1e6, total_ms=data["execution_time"] / 1e3)  # µs y ns a ms
+    g = df.groupby("structure")
+    n = g.size()
     table = pd.DataFrame({
-        "caminos": caminos,
-        "total_ms_por_camino": g["real_ns"].sum() / caminos / 1e6,
-        "open_ms_por_camino": g["open_ns"].sum() / caminos / 1e6,
+        "caminos": n,
+        "total_ms_por_camino": g["total_ms"].mean(),
+        "open_ms_por_camino": g["open_ms"].mean(),
+        #la desviación estándar es de los caminos: mide cuánto varían entre sí (de µs a decenas de ms
+        #según el largo), no qué tan seguro es el promedio. Para eso está el intervalo de confianza
+        "open_ms_desv_est": g["open_ms"].std(),
     })
+    table["open_ms_ic95"] = 1.96 * table["open_ms_desv_est"] / np.sqrt(n)
     table["resto_ms_por_camino"] = table["total_ms_por_camino"] - table["open_ms_por_camino"]
     table["open_pct"] = table["open_ms_por_camino"] / table["total_ms_por_camino"] * 100
-    table = table.loc[list(styles)]
-    table.rename(index=lambda s: styles[s][0]).to_csv(OUT_DIR / "tiempo_open.csv")
-    per_map = data.groupby(["map", "structure"]).agg(real_ns=("real_ns", "sum"), open_ns=("open_ns", "sum"))
-    per_map["open_pct"] = per_map["open_ns"] / per_map["real_ns"] * 100
-    per_map.to_csv(OUT_DIR / "tiempo_open_por_mapa.csv")
-    maps = sorted(data["map"].unique())
-    print(f"\nTiempo de la open por resta ({fmt_number(caminos.iloc[0])} caminos de {len(maps)} mapas)")
-    print(table.rename(index=lambda s: styles[s][0]).to_string(float_format=lambda v: f"{v:.4g}"))
+    #intervalo del porcentaje por el método delta: como es un cociente de promedios, su error sale de
+    #cuánto varía, camino a camino, la open menos el porcentaje por el total
+    share = df["structure"].map(table["open_pct"] / 100)
+    resid_sd = (df["open_ms"] - share * df["total_ms"]).groupby(df["structure"]).std()
+    table["open_pct_ic95"] = 1.96 * resid_sd / np.sqrt(n) / table["total_ms_por_camino"] * 100
+    #comparación pareada: en cada camino, la open de cada estructura menos la de la referencia en ese
+    #mismo camino. Si el intervalo no incluye el 0, la diferencia no es ruido
+    wide = df.pivot_table(index=["map", "row"], columns="structure", values="open_ms")
+    if BASELINE in wide.columns:
+        diff = wide.sub(wide[BASELINE], axis=0)
+        table["dif_open_vs_base_ms"] = diff.mean()
+        table["dif_open_vs_base_ic95"] = 1.96 * diff.std() / np.sqrt(diff.count())
+    return table.loc[[s for s in styles if s in table.index]]
 
+
+def open_table_for_output(table, styles):
+    #porcentajes con 2 decimales y milisegundos con 4, para el CSV y la terminal
+    out = table.rename(index=lambda s: styles[s][0] if s in styles else s, level=-1)
+    return out.round({c: (2 if c in OPEN_PCT_COLUMNS else 4) for c in out.columns if c != "caminos"})
+
+
+def draw_open_bars(ax, table, styles, label):
     #una barra por estructura: la open desde el cero (así se comparan sus largos) y el resto de A* después
-    fig, ax = plt.subplots(figsize=(11, 0.55 * len(table) + 2.4))
     y = np.arange(len(table))[::-1]
     for yi, (structure, row) in zip(y, table.iterrows()):
-        label, color = styles[structure]
-        bars = ax.barh(yi, row["open_ms_por_camino"], height=0.62, color=color,
+        bars = ax.barh(yi, row["open_ms_por_camino"], height=0.62, color=styles[structure][1],
                        edgecolor=INK["surface"], linewidth=1, zorder=2)
         add_hatches(bars, [structure])
         ax.barh(yi, row["resto_ms_por_camino"], left=row["open_ms_por_camino"], height=0.62, color=REST_GRAY,
                 edgecolor=INK["surface"], linewidth=1, zorder=2)
-        ax.annotate(f"open {fmt_number(row['open_pct'], 0)}% · total {fmt_value(row['total_ms_por_camino'])} ms",
-                    xy=(row["total_ms_por_camino"], yi), xytext=(6, 0), textcoords="offset points",
-                    va="center", fontsize=9, color=INK["secondary"])
+        #intervalo de confianza del 95% del promedio de la open, al final de su parte
+        ax.errorbar(row["open_ms_por_camino"], yi, xerr=row["open_ms_ic95"], fmt="none",
+                    ecolor=INK["primary"], elinewidth=1.2, capsize=4, capthick=1.2, zorder=3)
+        ax.annotate(label(row), xy=(row["total_ms_por_camino"], yi), xytext=(6, 0), textcoords="offset points",
+                    va="center", fontsize=9, color=INK["secondary"], linespacing=1.3)
     ax.set_yticks(y, [styles[s][0] for s in table.index])
     ax.grid(axis="x")
     ax.grid(axis="y", visible=False)
-    ax.set_xlim(0, table["total_ms_por_camino"].max() * 1.3)
-    ax.set_xlabel("Milisegundos por camino (promedio de la muestra)")
-    ax.set_title("Tiempo de A* por camino, separado en la open y el resto")
+
+
+def rest_legend(ax):
     #la leyenda solo nombra el gris: la parte de color es la open, y cada estructura se nombra a la izquierda
     ax.legend(handles=[Patch(facecolor=REST_GRAY, label="Resto de A*: generar sucesores, close y camino")],
               loc="upper center", bbox_to_anchor=(0.5, 0), ncol=1, fontsize=8.5, labelcolor=INK["secondary"],
-              bbox_transform=offset_copy(ax.transAxes, fig=fig, y=-0.58, units="inches"))
+              bbox_transform=offset_copy(ax.transAxes, fig=ax.figure, y=-0.58, units="inches"))
+
+
+def summarize_open_time(data, styles, levels):
+    #tiempo de la open medido por resta (columna open_time_ns): cada búsqueda se repitió con una open que
+    #devuelve los mismos nodos sin ordenar nada (ver open_time.rs), y la diferencia es lo que usó la open.
+    #Los TSV de corridas anteriores a esa columna no la traen
+    if "open_time_ns" not in data.columns:
+        return
+    data = data.dropna(subset=["open_time_ns"])
+    if data.empty:
+        return
+    method = "Cada búsqueda se repitió con una open que devuelve los mismos nodos sin ordenar nada."
+    n_maps = data["map"].nunique()
+
+    #todos los caminos juntos
+    table = open_time_table(data, styles)
+    open_table_for_output(table, styles).to_csv(OUT_DIR / "tiempo_open.csv")
+    per_map = data.groupby(["map", "structure"]).agg(total_us=("execution_time", "sum"),
+                                                      open_ns=("open_time_ns", "sum"))
+    per_map["open_pct"] = (per_map["open_ns"] / 1e3 / per_map["total_us"] * 100).round(2)
+    per_map.to_csv(OUT_DIR / "tiempo_open_por_mapa.csv")
+    n_paths = table["caminos"].max()
+    print(f"\nTiempo de la open por resta ({fmt_number(n_paths)} caminos de {n_maps} mapas)")
+    print(open_table_for_output(table, styles).to_string())
+
+    fig, ax = plt.subplots(figsize=(11, 0.55 * len(table) + 2.4))
+    draw_open_bars(ax, table, styles, lambda row: f"open {fmt_number(row['open_pct'], 2)}% "
+                                                  f"± {fmt_number(row['open_pct_ic95'], 2)} · "
+                                                  f"total {fmt_value(row['total_ms_por_camino'])} ms")
+    ax.set_xlim(0, table["total_ms_por_camino"].max() * 1.4)
+    ax.set_xlabel("Milisegundos por camino (promedio)")
+    ax.set_title("Tiempo de A* por camino, separado en la open y el resto")
+    rest_legend(ax)
     fig.suptitle("Cuánto del tiempo de A* se va en la open", x=0.012, ha="left",
                  fontsize=14, color=INK["primary"], y=0.985)
-    fig.text(0.012, 0.88,
-             "Cada búsqueda se corrió dos veces: con la open real y con una open que repite los mismos nodos sin ordenar "
-             "nada.\nLa diferencia es la open (la parte de color). "
-             f"{fmt_number(caminos.iloc[0])} caminos de {len(maps)} mapas: {', '.join(maps)}.",
+    fig.text(0.012, 0.88, f"{method}\nLa diferencia es la open (la parte de color); la marca negra es el intervalo "
+                          f"de confianza del 95% de su promedio. {fmt_number(n_paths)} caminos de {n_maps} mapas.",
              fontsize=9.5, color=INK["secondary"], linespacing=1.5)
     fig.tight_layout(rect=(0, 0, 1, 0.86))
     apply_tick_format(ax, "x")
     out = OUT_DIR / "tiempo_open.png"
+    fig.savefig(out, dpi=160)
+    plt.close(fig)
+    print(f"guardado {out}")
+
+    #lo mismo para cada nivel de dificultad (los mismos cortes que el resto del análisis)
+    by_level = {level: open_time_table(data[data["difficulty"] == level], styles) for level in levels.index}
+    open_table_for_output(pd.concat(by_level, names=["difficulty", "structure"]), styles) \
+        .to_csv(OUT_DIR / "tiempo_open_por_dificultad.csv")
+    pct = pd.DataFrame({level: t["open_pct"] for level, t in by_level.items()}).T
+    print("\nPorcentaje del tiempo de A* que usa la open, por dificultad")
+    print(pct.rename(columns=lambda s: styles[s][0]).to_string(float_format=lambda v: f"{v:.2f}"))
+
+    fig, axes = plt.subplots(1, len(levels), figsize=(16, 0.55 * len(table) + 3.2))
+    #itertuples y no iterrows: iterrows pasa todas las columnas a float y los conteos saldrían "156.0"
+    for col, (ax, row) in enumerate(zip(axes, levels.itertuples())):
+        t = by_level[row.Index]
+        #dos líneas para que la etiqueta quepa en un panel angosto
+        draw_open_bars(ax, t, styles, lambda r: f"open {fmt_number(r['open_pct'], 2)}% "
+                                                f"± {fmt_number(r['open_pct_ic95'], 2)}\n"
+                                                f"{fmt_value(r['total_ms_por_camino'])} ms")
+        ax.set_xlim(0, t["total_ms_por_camino"].max() * 1.6)
+        ax.set_xlabel("Milisegundos por camino (promedio)")
+        ax.set_title(f"{row.Index}: largo {fmt_number(row.largo_min)} a {fmt_number(row.largo_max)}\n"
+                     f"{fmt_number(row.caminos)} caminos de {fmt_number(row.mapas)} mapas")
+        if col > 0:
+            #los nombres de las estructuras ya están en el primer panel
+            ax.tick_params(labelleft=False)
+    rest_legend(axes[len(axes) // 2])
+    fig.suptitle("Cuánto del tiempo de A* se va en la open, según la dificultad de la ruta", x=0.012, ha="left",
+                 fontsize=14, color=INK["primary"], y=0.985)
+    fig.text(0.012, 0.885, f"{method} La diferencia es la open (la parte de color); la marca negra es el "
+                           "intervalo de confianza del 95% de su promedio.\n"
+                           "Cada panel tiene su propia escala: una ruta difícil tarda decenas de veces más que una fácil. "
+                           "Los niveles son los mismos de los otros gráficos de dificultad.",
+             fontsize=9.5, color=INK["secondary"], linespacing=1.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.86), w_pad=2.5)
+    for ax in axes:
+        apply_tick_format(ax, "x")
+    out = OUT_DIR / "tiempo_open_por_dificultad.png"
     fig.savefig(out, dpi=160)
     plt.close(fig)
     print(f"guardado {out}")
@@ -707,4 +782,4 @@ if __name__ == "__main__":
                        "Kilobytes por camino", "la memoria",
                        "Bajo 1× la estructura gana. La memoria es lo que reservaba la open al llegar a la meta.",
                        "memoria_por_dificultad.png")
-    summarize_open_time()
+    summarize_open_time(data, styles, levels)

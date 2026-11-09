@@ -7,7 +7,7 @@ use crate::{a_star::{AStarResults, Coords}, open_list::OpenList};
 // columnas del .tsv, en el mismo orden que se escriben las filas.
 // path va al final a proposito: es la unica de ancho variable, asi que
 // dejarla ahi evita que el resto de las columnas se desalinee.
-const HEADER: &str = "start_x\tstart_y\tgoal_x\tgoal_y\texpected_distance\tactual_distance\tpath_len\texpansions\tgenerated\topen_bytes\topen_used_bytes\topen_peak_bytes\tclose_bytes\texecution_time\tpath";
+const HEADER: &str = "start_x\tstart_y\tgoal_x\tgoal_y\texpected_distance\tactual_distance\tpath_len\texpansions\tgenerated\topen_bytes\topen_used_bytes\topen_peak_bytes\tclose_bytes\texecution_time\topen_time_ns\tpath";
 
 pub fn create_stat_file(
     mut file_name: String,
@@ -18,6 +18,9 @@ pub fn create_stat_file(
     //máximo que reservó la open en la búsqueda (lo mide Medido, A* no lo conoce)
     open_peak_bytes: usize,
     execution_time: u128,
+    //cuánto de la búsqueda se fue en la open, medido por resta (ver open_time.rs). En nanosegundos,
+    //y con signo: en caminos de pocos µs el ruido puede dejar la resta un poco bajo cero
+    open_time_ns: i64,
 ) {
     file_name.push_str(".tsv");
 
@@ -32,7 +35,7 @@ pub fn create_stat_file(
     }
 
     let text_to_write = format!(
-        "{}\t{}\t{}\t{}\t{:.8}\t{:.8}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+        "{}\t{}\t{}\t{}\t{:.8}\t{:.8}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
         start.0, start.1,
         goal.0, goal.1,
         expected_distance,
@@ -45,6 +48,7 @@ pub fn create_stat_file(
         open_peak_bytes,
         results.close_bytes,
         execution_time,
+        open_time_ns,
         path_str
     );
 
@@ -61,41 +65,3 @@ pub fn create_stat_file(
     let _ = writeln!(file, "{}", text_to_write);
 }
 
-//tiempo de la open medido por resta (open_time.rs): un archivo por mapa en test_result/open-time,
-//con una fila por escenario y estructura. Los tiempos van en nanosegundos: en los caminos cortos la
-//diferencia entre la búsqueda real y su repetición es de pocos µs
-const OPEN_TIME_DIR: &str = "test_result/open-time";
-const OPEN_TIME_HEADER: &str = "structure\tstart_x\tstart_y\tgoal_x\tgoal_y\texpected_distance\texpansions\treal_ns\treplay_ns";
-
-pub fn create_open_time_file(
-    scen_file: &str,
-    structure: &str,
-    start: Coords,
-    goal: Coords,
-    expected_distance: f64,
-    expansions: u64,
-    real_ns: u128,
-    replay_ns: u128,
-) {
-    //a diferencia de las carpetas de cada estructura, esta se crea sola si no existe
-    let _ = fs::create_dir_all(OPEN_TIME_DIR);
-    let rout_file = format!("{}/{}.tsv", OPEN_TIME_DIR, scen_file);
-    if !Path::new(&rout_file).exists() {
-        let _ = fs::write(&rout_file, format!("{}\n", OPEN_TIME_HEADER));
-    }
-    let mut file = OpenOptions::new()
-        .append(true)
-        .open(&rout_file)
-        .unwrap();
-    let _ = writeln!(
-        file,
-        "{}\t{}\t{}\t{}\t{}\t{:.8}\t{}\t{}\t{}",
-        structure,
-        start.0, start.1,
-        goal.0, goal.1,
-        expected_distance,
-        expansions,
-        real_ns,
-        replay_ns
-    );
-}

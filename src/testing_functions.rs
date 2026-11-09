@@ -48,25 +48,7 @@ where OpenType: OpenList,
                 continue;
             }
             let stats = decode_scen(line);
-            let star_time = Instant::now();
-            //Medido envuelve la open para registrar el máximo de memoria que reservó en la búsqueda
-            let astar_data = a_star::<Medido<OpenType>, _>(
-                stats.start,
-                stats.goal,
-                map,
-                octile_distance
-            ).unwrap();
-            let finish = star_time.elapsed().as_micros();
-            let file_name = format!("{}/{}", OpenType::NAME, scen_files);
-            write_files::create_stat_file(
-                file_name,
-                stats.start,
-                stats.goal,
-                stats.distance,
-                &astar_data,
-                astar_data.open.peak_bytes(),
-                finish
-            );
+            run_map_struct_save::<OpenType>(map, stats, &scen_files);
             /*
             let ouput_path = format!("generated_output/{}-{}_{}-{}_{}.png",
                 &scen_files,
@@ -130,14 +112,32 @@ fn run_map_struct_save<OpenType>(map: &CustomMap, stats: MapStats, scen_files: &
 where OpenType: OpenList,
 {
     let star_time = Instant::now();
-    //Medido envuelve la open para registrar el máximo de memoria que reservó en la búsqueda
-    let astar_data = a_star::<Medido<OpenType>, _>(
+    //Medido registra el máximo de memoria que reservó la open; Grabado anota qué nodos salieron de
+    //ella, para la repetición. Grabado va afuera para que su anotación no cuente como memoria de la open
+    let mut astar_data = a_star::<Grabado<Medido<OpenType>>, _>(
         stats.start,
         stats.goal,
         map,
         octile_distance
     ).unwrap();
-    let finish = star_time.elapsed().as_micros();
+    let search_time = star_time.elapsed();
+    let finish = search_time.as_micros();
+
+    //la misma búsqueda con una open que solo repite lo grabado, sin ordenar nada:
+    //lo que tarda de menos es lo que usó la open (ver open_time.rs)
+    astar_data.open.preparar_repeticion();
+    let star_time = Instant::now();
+    let replay = a_star::<Repeticion, _>(
+        stats.start,
+        stats.goal,
+        map,
+        octile_distance
+    ).unwrap();
+    let replay_time = star_time.elapsed();
+    //la repetición tiene que haber hecho exactamente el mismo trabajo; si no, la resta no vale
+    assert_eq!(astar_data.expansions, replay.expansions, "la repetición no reprodujo la búsqueda de {}", OpenType::NAME);
+    let open_time_ns = search_time.as_nanos() as i64 - replay_time.as_nanos() as i64;
+
     let file_name = format!("{}/{}", OpenType::NAME, scen_files);
     write_files::create_stat_file(
         file_name,
@@ -145,8 +145,9 @@ where OpenType: OpenList,
         stats.goal,
         stats.distance,
         &astar_data,
-        astar_data.open.peak_bytes(),
-        finish
+        astar_data.open.inner().peak_bytes(),
+        finish,
+        open_time_ns
     );
 }
 
@@ -208,93 +209,5 @@ let maps = read_folders("maps");
             */
         }
         println!("Finish map: {}", data_compare);
-    }
-}
-//mapas donde se mide el tiempo de la open por resta (cargo run --release -- open-time).
-//Una muestra de tipos distintos y tamaño moderado; con la lista vacía se miden todos los mapas
-pub const OPEN_TIME_MAPS: &[&str] = &[
-    "arena2", "den312d", "den401d", "hrt201n", "lak504d", "brc300d", "orz303d", "lgt601d",
-];
-
-//una búsqueda real grabando lo que devuelve la open, y la misma búsqueda repitiendo esa grabación
-//con una open que no ordena nada. La diferencia de tiempo es lo que costó la open (ver open_time.rs)
-fn run_open_time<OpenType>(map: &CustomMap, stats: MapStats, scen_files: &str)
-where OpenType: OpenList,
-{
-    let star_time = Instant::now();
-    let mut real = a_star::<Grabado<OpenType>, _>(
-        stats.start,
-        stats.goal,
-        map,
-        octile_distance
-    ).unwrap();
-    let real_ns = star_time.elapsed().as_nanos();
-    real.open.preparar_repeticion();
-
-    let star_time = Instant::now();
-    let replay = a_star::<Repeticion, _>(
-        stats.start,
-        stats.goal,
-        map,
-        octile_distance
-    ).unwrap();
-    let replay_ns = star_time.elapsed().as_nanos();
-
-    //la repetición tiene que haber hecho exactamente el mismo trabajo; si no, la resta no vale
-    assert_eq!(real.expansions, replay.expansions, "la repetición no reprodujo la búsqueda de {}", OpenType::NAME);
-    assert_eq!(real.path, replay.path, "la repetición no reprodujo el camino de {}", OpenType::NAME);
-    write_files::create_open_time_file(
-        scen_files,
-        OpenType::NAME,
-        stats.start,
-        stats.goal,
-        stats.distance,
-        real.expansions,
-        real_ns,
-        replay_ns
-    );
-}
-
-//como test_structur_per_map (las estructuras intercaladas en cada escenario), pero midiendo cuánto
-//tiempo usa la open; solo en los mapas de only_maps, o en todos si la lista está vacía
-pub fn test_open_time_per_map(map: &mut CustomMap, only_maps: &[&str]){
-    let maps = read_folders("maps");
-    let test_data = read_folders("test_data");
-    for scen_files in test_data{
-        let data_compare = match scen_files.strip_suffix(".scen"){
-            Some(data)=> {data}
-            None => {
-                panic!("Error, probablemente estás leyendo el directorio equivocado");
-            }
-        };
-        //data_compare es "arena2.map"; la lista usa el nombre sin ".map"
-        let map_name = data_compare.strip_suffix(".map").unwrap_or(data_compare);
-        if !only_maps.is_empty() && !only_maps.contains(&map_name) {
-            continue;
-        }
-        let maptowork  = match maps.get(data_compare){
-            Some(working_map)=> working_map,
-            None => {
-                println!("No se encontró mapa deseado.");
-                continue;
-            }
-        };
-
-        let map_dir = format!("maps/{}", maptowork);
-        let data_in_dir = format!("test_data/{}", scen_files);
-        *map = [[false; 2048]; 2048];
-        read_map(map, &map_dir);
-        //la primera línea del .scen es la versión del formato
-        for line in read_lines(&data_in_dir).into_iter().skip(1){
-            let stats = decode_scen(line);
-            run_open_time::<BinaryHeapOpen>(map, stats, &scen_files);
-            run_open_time::<RadixHeapOpen>(map, stats, &scen_files);
-            run_open_time::<RadixAltOpen>(map, stats, &scen_files);
-            run_open_time::<RadixAltRoundOpen>(map, stats, &scen_files);
-            run_open_time::<VebOpen>(map, stats, &scen_files);
-            run_open_time::<QuickHeapOpen>(map, stats, &scen_files);
-            run_open_time::<QuickHeapScalarOpen>(map, stats, &scen_files);
-        }
-        println!("Tiempo de la open medido en {}", map_name);
     }
 }

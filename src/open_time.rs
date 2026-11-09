@@ -3,12 +3,13 @@ use std::cell::RefCell;
 use crate::a_star::SearchNode;
 use crate::open_list::OpenList;
 
-//Medición del tiempo que usa la open dentro de A*, por resta.
+//Medición del tiempo que usa la open dentro de A*, por resta (columna open_time_ns de los TSV).
 //
 //Cronometrar cada insert y pop_min no sirve: leer el reloj cuesta ~18 ns y una operación de la open
 //dura entre 16 y 37 ns, así que la medición pesa tanto como lo medido (alargaba A* entre 27% y 42%).
-//En vez de eso, cada búsqueda se corre dos veces:
-//1. con la open real envuelta en Grabado, que anota qué nodos devolvió pop_min y en qué orden
+//En vez de eso, cada búsqueda se corre dos veces (run_map_struct_save en testing_functions.rs):
+//1. la búsqueda cronometrada de siempre, con la open envuelta en Grabado, que anota qué nodos
+//   devolvió pop_min y en qué orden
 //2. con Repeticion, una open falsa que devuelve esos mismos nodos en el mismo orden sin ordenar nada
 //A* hace exactamente el mismo trabajo fuera de la open en las dos (mismas expansiones, mismos
 //sucesores, mismo close), así que la diferencia de tiempo es lo que costó la open, incluido lo que
@@ -38,6 +39,11 @@ impl<Open: OpenList> Default for Grabado<Open> {
 }
 
 impl<Open> Grabado<Open> {
+    //la open de adentro, por ejemplo para leer el máximo de memoria que midió Medido
+    pub fn inner(&self) -> &Open {
+        &self.open
+    }
+
     //deja la grabación lista para que la tome la próxima Repeticion
     pub fn preparar_repeticion(&mut self) {
         CINTA.with(|cinta| *cinta.borrow_mut() = std::mem::take(&mut self.sacados));
