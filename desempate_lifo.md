@@ -6,7 +6,7 @@ Para comparar las estructuras de la open, todas deben expandir exactamente los m
 parte de la diferencia de tiempo viene de cuántos nodos recorre A\* y no de la estructura. Para eso,
 todas tienen que resolver los empates de f con la misma regla. Se eligió:
 
-> **f redondeada a 2⁻²⁰ y, entre nodos con la misma f, sale primero el último que entró (LIFO).**
+> **f redondeada a 2⁻¹⁸ y, entre nodos con la misma f, sale primero el último que entró (LIFO).**
 
 Las razones:
 
@@ -14,9 +14,9 @@ Las razones:
    es imposible en un radix heap, porque obligaría a insertar claves menores que la última extraída
    (sección 3). Tres de las siete estructuras son radix heaps.
 2. **No cuesta expansiones:** en los mapas medidos, LIFO expande entre 0 % y 0,9 % *menos* que
-   "mayor g" (sección 5).
+   "mayor g" (sección 6).
 3. **RadixAltRound ya la cumple:** sus búsquedas son idénticas, camino por camino, a las de un
-   BinaryHeap con esta regla explícita (sección 5).
+   BinaryHeap con esta regla explícita (sección 6).
 
 ## 1. Por qué importan los empates
 
@@ -82,12 +82,54 @@ los pasos de g. Con la clave exacta (`f.to_bits()`) esos nodos no empatan, y el 
 ruido. Por eso RadixAlt, RadixHeap y el vEB expanden distinto que RadixAltRound, aunque los tres sean
 LIFO.
 
-Redondear a 2⁻²⁰ elimina ese ruido sin juntar f distintas. Con la octil, toda f es P + Q·√2, con P y Q
-enteros. En caminos del largo de estos mapas, dos f distintas se separan por al menos ~0,00006, que
-son 65 unidades de 2⁻²⁰. El redondeo mueve cada clave como mucho media unidad, así que nunca junta ni
-invierte dos f distintas.
+Redondear a 2⁻¹⁸ (262.144 segmentos por unidad de f, cada uno de ≈ 0,0000038) elimina ese ruido sin
+juntar f distintas. Con la octil, toda f es P + Q·√2, con P y Q enteros. Hasta f ≈ 7.600, dos f
+distintas se separan por ≈ 0,00015 o más, unas 39 veces el segmento. El redondeo mueve cada clave como
+mucho medio segmento, así que nunca junta ni invierte dos f distintas.
 
-## 5. Mediciones
+Elegimos 2⁻¹⁸ y no 2⁻²⁰ por la colección Mazes (60 mapas de 512×512). Su camino óptimo más largo cuesta
+7.583 (maze512-1-4), contra 2.827,6 en DragonAges (orz900d). Con 2⁻²⁰ el assert de QuickHeap falló en
+esos laberintos con f = 4.096,07.
+
+## 5. Por qué redondear en todas las estructuras
+
+¿Y si no redondeamos y solo aplicamos LIFO con la clave exacta `f.to_bits()`? No alcanza.
+
+**LIFO solo no basta.** Con la clave exacta, el ruido de punto flotante a veces produce una clave apenas
+menor que la última extraída: una f matemáticamente igual que salió con el último bit más chico. Los
+radix heaps no aceptan claves menores, así que las suben al valor de la última extraída (`key.max(top)`)
+y las tratan como empate. Las demás estructuras no hacen ese ajuste.
+
+Se midió en 4 mapas el porcentaje de caminos idénticos (expansiones y camino) a RadixAlt (clave exacta
++ LIFO + ajuste):
+
+| Mapa | vEB actual (clave exacta + LIFO, sin ajuste) | Clave exacta + LIFO + el mismo ajuste |
+|---|---|---|
+| arena2 | 32,9 % | 100 % |
+| den312d | 71,0 % | 100 % |
+| hrt201n | 44,4 % | 100 % |
+| lak504d | 46,2 % | 100 % |
+
+Un BinaryHeap con clave exacta + LIFO sin ajuste da exactamente los mismos porcentajes que el vEB.
+
+Sin redondear, se podría unificar BinaryHeap, RadixHeap y vEB copiando el ajuste, pero QuickHeap no. Su
+desempate exige poner el contador de inserciones en los 32 bits bajos del u64, así que la f debe caber
+en los 32 bits altos. `f.to_bits()` usa los 64 bits y todos importan.
+
+Además, los empates quedarían decididos por el signo del error de redondeo. Dos nodos con la misma f
+matemática empatan (y sale primero el último, LIFO) si el segundo salió apenas más chico. Si salió
+apenas más grande, no empatan y sale después de todos los empatados. Es un orden determinista pero
+arbitrario y difícil de justificar.
+
+El redondeo también acelera los radix heaps, porque las claves quedan más compactas. En la corrida
+completa (155.620 caminos), la open de RadixAltRound fue 3,6 % más rápida que la de RadixAlt
+(diferencia pareada −0,0375 ms ± 0,0009 por camino, IC 95 %). El tiempo total por camino fue 7,595 ms
+contra 7,716 ms.
+
+El redondeo es lo que permite incluir a QuickHeap y que "empate" signifique "misma f matemática", sin
+costo de exactitud (sección 4).
+
+## 6. Mediciones
 
 **¿RadixAltRound es exactamente "f redondeada + LIFO"?** Se comparó, camino por camino, cada
 estructura actual contra un BinaryHeap con esa regla explícita (mismo número de expansiones):
@@ -116,17 +158,25 @@ El orden interno actual de BinaryHeap expande algo menos, pero es un orden que n
 puede reproducir: depende de cómo el heap acomoda sus elementos. Al unificar, BinaryHeap expandirá
 entre 1 % y 7 % más que hoy, igual que todas las demás.
 
-## 6. Consecuencias
+## 7. Consecuencias
 
 - **Todas las estructuras expanden los mismos nodos y encuentran el mismo camino.** Las diferencias de
   tiempo y memoria quedan solo en la estructura.
-- **RadixAlt queda idéntica a RadixAltRound:** su única diferencia era usar la f exacta.
+- **RadixAlt se elimina:** con la clave redondeada sería idéntica a RadixAltRound, que conserva su nombre.
+- **QuickHeap** guarda la clave en 32 bits y escala la f por 2¹⁸, igual que el resto, para que todas
+  redondeen igual. Con eso la f debe ser menor que 16.384, el doble de margen sobre 7.583 (la máxima
+  observada), y un assert lo vigila. Con 2²⁰ el límite era 4.096.
 - **BinaryHeap** guarda el contador junto al nodo: cada entrada pasa de 48 a 64 bytes.
 - **QuickHeap** necesita una tabla de contador a slot: 4 bytes por inserción.
 - **Hay que volver a correr todo.**
 
-## 7. Verificación
+## 8. Verificación
 
 Antes de cambiar el código, se prueba con prototipos de las estructuras con esta regla. Cada una debe
 dar **el mismo número de expansiones, el mismo número de generados y el mismo camino** que
 RadixAltRound, en todos los escenarios de todos los mapas.
+
+Para la escala 2⁻¹⁸ se comprobó que en arena2 los resultados con 2⁻¹⁸ y 2⁻²⁰ son idénticos
+(expansiones, generados y camino) en BinaryHeap, RadixHeap, vEB y QuickHeap. Además, en arena2 (910
+caminos) y en maze512-1-4 (474 caminos, 1 de cada 40) las 6 estructuras dan exactamente lo mismo,
+incluido el camino de costo 7.570.

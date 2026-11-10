@@ -115,7 +115,7 @@ impl<Open: OpenList> OpenList for Medido<Open> {
     }
 
     //sacar también puede pedir memoria: los radix heaps mueven nodos a otros buckets al
-    //reorganizarse, y RadixAlt guarda el espacio liberado en free_slots
+    //reorganizarse, y RadixAltRound guarda el espacio liberado en free_slots
     fn pop_min(&mut self) -> Option<SearchNode> {
         self.medir(|open| open.pop_min())
     }

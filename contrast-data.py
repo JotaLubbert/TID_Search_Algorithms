@@ -9,8 +9,11 @@ from matplotlib.transforms import offset_copy
 from matplotlib.patches import Patch
 
 TSV_DIR = Path("test_result")
-OUT_DIR = Path("generated_output/comparacion")
-CACHE = OUT_DIR / "datos.pkl"
+BASE_OUT = Path("generated_output/comparacion")
+OUT_DIR = BASE_OUT / "General"  # cada análisis lo reemplaza por su carpeta
+CACHE = BASE_OUT / "datos.pkl"   # guarda todas las colecciones; cada análisis filtra después
+GENERAL = "General"             # carpeta del análisis con todas las colecciones juntas
+SCOPE = GENERAL                 # análisis en curso (General o una colección); main lo cambia
 #la parte de A* que no es la open, en los gráficos del tiempo de la open
 REST_GRAY = "#bdbcb5"
 BASELINE = "binary-heap"   # las demás estructuras se comparan contra esta
@@ -21,10 +24,11 @@ OPTIMALITY_TOL = 1e-6      # el .scen trae la distancia esperada con 8 decimales
 #el tiempo se guarda en µs enteros: en caminos de pocos µs dos estructuras empatan o difieren
 #solo por el redondeo, así que el tiempo relativo se calcula únicamente desde este umbral
 MIN_US_FOR_RATIO = 50
-#para el desglose por tamaño de la open: BinaryHeap reserva 48 bytes por nodo (Reverse<SearchNode>)
-#más los 24 del Vec, así que de open_bytes sale su capacidad en nodos (una potencia de 2)
-BASELINE_NODE_BYTES = 48
-BASELINE_STRUCT_BYTES = 24
+#para el desglose por tamaño de la open: BinaryHeap reserva 64 bytes por nodo (la entrada
+#(clave, Reverse(seq), nodo) con su relleno) más los 32 de su struct (Vec de 24 y el contador seq,
+#con relleno), así que de open_bytes sale su capacidad en nodos (una potencia de 2)
+BASELINE_NODE_BYTES = 64
+BASELINE_STRUCT_BYTES = 32
 OPEN_SMALLEST_BIN = 128    # las capacidades menores se juntan en un solo tramo
 MIN_PER_OPEN_BIN = 50      # un tamaño con menos caminos no se dibuja
 #niveles de dificultad de una ruta; los cortes no son fijos, se calculan con los datos (with_difficulty)
@@ -173,12 +177,18 @@ def structure_styles(structures):
     return dict(sorted(styles.items(), key=lambda item: item[0] != BASELINE))
 
 
+def tsv_files(structure):
+    #los TSV están en una subcarpeta por colección: test_result/<estructura>/<colección>/<mapa>.map.scen.tsv
+    return sorted(TSV_DIR.glob(f"{structure}/*/*.tsv"))
+
+
 def read_tsvs(structures):
     frames = []
     for structure in structures:
-        for tsv in sorted((TSV_DIR / structure).glob("*.tsv")):
+        for tsv in tsv_files(structure):
             df = pd.read_csv(tsv, sep="\t", usecols=lambda c: c in COLUMNS or c in OPTIONAL_COLUMNS)
             df["map"] = tsv.name.removesuffix(".map.scen.tsv")
+            df["collection"] = tsv.parent.name
             df["row"] = np.arange(len(df))
             df["structure"] = structure
             frames.append(df)
@@ -187,26 +197,31 @@ def read_tsvs(structures):
 
 def load_results():
     #una carpeta todavía vacía (estructura sin correr) no cuenta
-    structures = sorted(p.name for p in TSV_DIR.iterdir() if p.is_dir() and any(p.glob("*.tsv")))
+    structures = sorted(p.name for p in TSV_DIR.iterdir() if p.is_dir() and tsv_files(p.name))
     if BASELINE not in structures:
         raise ValueError(f"falta la carpeta de referencia {TSV_DIR / BASELINE}")
-    newest_tsv = max(t.stat().st_mtime for s in structures for t in (TSV_DIR / s).glob("*.tsv"))
+    newest_tsv = max(t.stat().st_mtime for s in structures for t in tsv_files(s))
+    #el caché solo vale si trae las mismas estructuras y colecciones (y los mismos mapas) que hay en disco
+    on_disk = {(s, t.parent.name, t.name.removesuffix(".map.scen.tsv")) for s in structures for t in tsv_files(s)}
     #leer los TSV completos tarda; si nada cambió desde la última vez se reutiliza el caché
     if CACHE.exists() and CACHE.stat().st_mtime > newest_tsv:
         data = pd.read_pickle(CACHE)
-        if sorted(data["structure"].unique()) == structures:
+        #un caché hecho antes de las colecciones no trae la columna y se descarta
+        if "collection" in data.columns and \
+                set(data[["structure", "collection", "map"]].drop_duplicates().itertuples(index=False, name=None)) == on_disk:
             return with_time_ratio(data)
 
     data = read_tsvs(structures)
-    #cada fila se empareja con la misma fila de la referencia: mismo mapa, mismo escenario
+    #cada fila se empareja con la misma fila de la referencia: misma colección, mismo mapa, mismo escenario
+    #(sin la colección, dos mapas con el mismo nombre en colecciones distintas se mezclarían)
     base_cols = ["start_x", "start_y", "goal_x", "goal_y", "actual_distance",
                  "execution_time", "open_bytes", "expansions"]
-    base = data[data["structure"] == BASELINE].set_index(["map", "row"])[base_cols].add_suffix("_base")
-    data = data.join(base, on=["map", "row"])
+    base = data[data["structure"] == BASELINE].set_index(["collection", "map", "row"])[base_cols].add_suffix("_base")
+    data = data.join(base, on=["collection", "map", "row"])
     coords = ["start_x", "start_y", "goal_x", "goal_y"]
     same_scenario = (data[coords].to_numpy() == data[[c + "_base" for c in coords]].to_numpy()).all(axis=1)
     if not same_scenario.all():
-        bad = data.loc[~same_scenario, ["structure", "map", "row"]].head()
+        bad = data.loc[~same_scenario, ["structure", "collection", "map", "row"]].head()
         raise ValueError(f"hay filas que no corresponden al mismo escenario en todas las estructuras:\n{bad}")
 
     data["time_ms"] = data["execution_time"] / 1000
@@ -221,6 +236,11 @@ def load_results():
     CACHE.parent.mkdir(parents=True, exist_ok=True)
     data.to_pickle(CACHE)
     return with_time_ratio(data)
+
+
+def scope_title():
+    #General dice "Todos los mapas"; una colección se nombra para que se distinga de las otras carpetas
+    return "Todos los mapas" if SCOPE == GENERAL else f"Mapas de {SCOPE}"
 
 
 def with_time_ratio(data):
@@ -265,7 +285,7 @@ def save_summaries(data, styles):
     overall = data.groupby("structure").agg(**SUMMARY_METRICS).rename(index=lambda s: styles[s][0])
     overall["optimos_pct"] *= 100
     overall.to_csv(OUT_DIR / "resumen_global.csv")
-    print("\nResumen de todos los mapas (medianas por escenario)")
+    print(f"\nResumen de {scope_title().lower()} (medianas por escenario)")
     cols = ["tiempo_ms_total", "us_por_expansion_mediana", "tiempo_vs_base_mediana",
             "memoria_vs_base_mediana", "expansiones_vs_base_mediana"]
     print(overall[cols].to_string(float_format=lambda v: f"{v:.4g}"))
@@ -417,8 +437,8 @@ def plot_global(data, styles):
             median_text = fmt_number(median, 3 if abs(median - 1) < 0.01 else 2)
             higher_text = fmt_number(higher, 0 if higher >= 10 else 1)
             text = f"{label}: mediana {median_text}×\n{higher_text}% de los caminos sobre 1×"
-            #RadixAlt y RadixHeap expanden exactamente los mismos nodos (misma clave, mismo desempate):
-            #plot_series evita que la segunda curva tape a la primera y lo dice en la leyenda
+            #con la clave redondeada y el desempate LIFO todas expanden exactamente los mismos nodos:
+            #plot_series evita que una curva tape a otra igual y lo dice en la leyenda
             plot_series(ax, drawn, label, np.quantile(values, fraction), fraction, color, text,
                         lambda other, text=text: f"{text}\n(igual a {other})", line_style(structure))
         ax.set_xlim(min(lo, 0.95), max(hi, 1.05))
@@ -430,7 +450,7 @@ def plot_global(data, styles):
         panel_legend(ax)
     axes[0].set_ylabel("Porcentaje de caminos con ese valor o menos")
     n_scen = (data["structure"] == BASELINE).sum()
-    fig.suptitle(f"Todos los mapas: cada estructura comparada con {base_label} en los mismos caminos",
+    fig.suptitle(f"{scope_title()}: cada estructura comparada con {base_label} en los mismos caminos",
                  x=0.012, ha="left", fontsize=14, color=INK["primary"], y=0.985)
     fig.text(0.012, 0.895,
              f"{fmt_number(n_scen)} caminos de {data['map'].nunique()} mapas. Cada camino de una estructura se divide por "
@@ -498,7 +518,7 @@ def plot_by_open(data, styles):
     ax_n.tick_params(labelbottom=True)
     ax_n.set_xlabel(f"Máximo de nodos en la open de {base_label} (redondeado a potencia de 2)")
 
-    fig.suptitle("Todos los mapas: tiempo según el tamaño de la open", x=0.012, ha="left",
+    fig.suptitle(f"{scope_title()}: tiempo según el tamaño de la open", x=0.012, ha="left",
                  fontsize=14, color=INK["primary"], y=0.99)
     fig.text(0.012, 0.905,
              f"Cada camino se ubica según el máximo de nodos que tuvo a la vez la open de {base_label}. Bajo 1× la estructura gana.\n"
@@ -592,7 +612,7 @@ def plot_by_difficulty(data, styles, levels, value_col, ratio_col, title, unit, 
     top = high + (0.2 if high > 1 else 0.06) * span
     axes[1, 0].set_ylim(max(bottom, 0), top)
 
-    fig.suptitle(f"Todos los mapas: {title} según la dificultad de la ruta", x=0.012, ha="left",
+    fig.suptitle(f"{scope_title()}: {title} según la dificultad de la ruta", x=0.012, ha="left",
                  fontsize=14, color=INK["primary"], y=0.99)
     fig.text(0.012, 0.9,
              "La dificultad sale del largo del camino óptimo (el bucket de MovingAI); los cortes son los terciles de todos los "
@@ -638,7 +658,7 @@ def open_time_table(data, styles):
     table["open_pct_ic95"] = 1.96 * resid_sd / np.sqrt(n) / table["total_ms_por_camino"] * 100
     #comparación pareada: en cada camino, la open de cada estructura menos la de la referencia en ese
     #mismo camino. Si el intervalo no incluye el 0, la diferencia no es ruido
-    wide = df.pivot_table(index=["map", "row"], columns="structure", values="open_ms")
+    wide = df.pivot_table(index=["collection", "map", "row"], columns="structure", values="open_ms")
     if BASELINE in wide.columns:
         diff = wide.sub(wide[BASELINE], axis=0)
         table["dif_open_vs_base_ms"] = diff.mean()
@@ -745,7 +765,7 @@ def summarize_open_time(data, styles, levels):
             #los nombres de las estructuras ya están en el primer panel
             ax.tick_params(labelleft=False)
     rest_legend(axes[len(axes) // 2])
-    fig.suptitle("Cuánto del tiempo de A* se va en la open, según la dificultad de la ruta", x=0.012, ha="left",
+    fig.suptitle(f"Cuánto del tiempo de A* se va en la open, según la dificultad de la ruta ({SCOPE})", x=0.012, ha="left",
                  fontsize=14, color=INK["primary"], y=0.985)
     fig.text(0.012, 0.885, f"{method} La diferencia es la open (la parte de color); la marca negra es el "
                            "intervalo de confianza del 95% de su promedio.\n"
@@ -761,15 +781,19 @@ def summarize_open_time(data, styles, levels):
     print(f"guardado {out}")
 
 
-if __name__ == "__main__":
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    data = with_difficulty(load_results())
+def analyze(data):
+    data = with_difficulty(data)
     styles = structure_styles(sorted(data["structure"].unique()))
     print_optimality(data, styles)
     save_summaries(data, styles)
     levels = save_difficulty_summary(data, styles)
-    for map_name in MAPS_TO_PLOT:
-        plot_map(data, map_name, styles)
+    #los gráficos por mapa solo van en cada colección; General los repetiría
+    if SCOPE != GENERAL:
+        maps = sorted(data["map"].unique())
+        #MAPS_TO_PLOT son mapas de una colección; si no hay ninguno aquí se usan los primeros de esta
+        to_plot = [m for m in MAPS_TO_PLOT if m in maps] or maps[:len(MAPS_TO_PLOT)]
+        for map_name in to_plot:
+            plot_map(data, map_name, styles)
     plot_global(data, styles)
     plot_by_open(data, styles)
     base_label = styles[BASELINE][0]
@@ -783,3 +807,15 @@ if __name__ == "__main__":
                        "Bajo 1× la estructura gana. La memoria es lo que reservaba la open al llegar a la meta.",
                        "memoria_por_dificultad.png")
     summarize_open_time(data, styles, levels)
+
+
+if __name__ == "__main__":
+    all_data = load_results()
+    collections = sorted(all_data["collection"].unique())
+    #General con todo junto y después cada colección sola; los terciles de dificultad salen de cada subconjunto
+    for SCOPE in [GENERAL, *collections]:
+        OUT_DIR = BASE_OUT / SCOPE
+        OUT_DIR.mkdir(parents=True, exist_ok=True)
+        print(f"\n===== {SCOPE} -> {OUT_DIR} =====")
+        subset = all_data if SCOPE == GENERAL else all_data[all_data["collection"] == SCOPE].copy()
+        analyze(subset)

@@ -5,7 +5,7 @@ use std::mem::{self, size_of};
 
 use crate::a_star::hashmap_heap_bytes;
 
-//Árbol de van Emde Boas sobre claves u64, pensado para guardar f.to_bits() en la open de A*.
+//Árbol de van Emde Boas sobre claves u64, pensado para guardar la clave redondeada de f (open_key) en la open de A*.
 //Es un conjunto: cada clave está una sola vez, los empates de f se manejan afuera.
 //
 //Decisiones para tiempo de ejecución:
@@ -14,7 +14,7 @@ use crate::a_star::hashmap_heap_bytes;
 //- Ese HashMap usa un hash rápido para enteros: el SipHash por defecto de Rust es lento
 //  para claves u64, y aquí hay una búsqueda por nivel.
 //- Los clusters van guardados directo dentro del HashMap, sin un Box por cluster: con
-//  claves f.to_bits() casi todos los clusters tienen un solo elemento, y así crearlos
+//  claves de f casi todos los clusters tienen un solo elemento, y así crearlos
 //  no pide memoria al allocator. Solo el summary va en Box (si no, el tipo sería infinito).
 //- Los universos de 8 bits o menos son hojas: un bitset de 256 bits ([u64; 4]). Con claves
 //  de 64 bits la recursión queda 64 -> 32 -> 16 -> hoja de 8, o sea tres búsquedas en

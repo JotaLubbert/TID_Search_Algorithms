@@ -55,6 +55,10 @@ pub fn create_stat_file(
     //se revisa la ruta completa: file_name puede incluir subcarpeta (ej. "binary-heap/..."),
     //y listar test_result/ solo ve las subcarpetas, no los archivos dentro de ellas.
     let rout_file = format!("test_result/{}", file_name);
+    //la carpeta de la colección (ej. "binary-heap/Mazes") se crea la primera vez que se escribe en ella
+    if let Some(carpeta) = Path::new(&rout_file).parent() {
+        fs::create_dir_all(carpeta).expect("no se pudo crear la carpeta de resultados");
+    }
     if !Path::new(&rout_file).exists() {
         let _ = fs::write(&rout_file, format!("{}\n", HEADER));
     }

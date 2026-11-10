@@ -1,6 +1,7 @@
+use std::path::Path;
 use std::time::{Duration, Instant};
 use rand::{self, RngExt};
-use crate::{CustomMap, a_star::{Coords, a_star}, distances_types::{self, octile_distance}, map_visualization, memory_counter::Medido, open_time::{Grabado, Repeticion}, open_list::{BinaryHeapOpen, OpenList, QuickHeapOpen, QuickHeapScalarOpen, RadixAltOpen, RadixAltRoundOpen, RadixHeapOpen, VebOpen}, read_files::{MapStats, decode_scen, read_folders, read_lines, read_map}, search_functions::search_valid_coords, write_files};
+use crate::{CustomMap, a_star::{Coords, a_star}, distances_types::{self, octile_distance}, map_visualization, memory_counter::Medido, open_time::{Grabado, Repeticion}, open_list::{BinaryHeapOpen, OpenList, QuickHeapOpen, QuickHeapScalarOpen, RadixAltRoundOpen, RadixHeapOpen, VebOpen}, read_files::{MapStats, decode_scen, read_folders, read_lines, read_map}, search_functions::search_valid_coords, write_files};
 #[allow(dead_code)]
 pub fn test_astar(map:&mut CustomMap, test_atempts: usize)->Vec<(u128, Vec<(u32, u32)>)>{
     let test_coords = search_valid_coords(map, 15);
@@ -19,54 +20,50 @@ pub fn test_astar(map:&mut CustomMap, test_atempts: usize)->Vec<(u128, Vec<(u32,
 pub fn test_astar_correctnes<OpenType>(map:&mut CustomMap)
 where OpenType: OpenList,
 {
-    let maps = read_folders("maps");
-    let test_data = read_folders("test_data");
-    for scen_files in test_data{
-        let data_compare = match scen_files.strip_suffix(".scen"){
-            Some(data)=> {data}
-            None => {
-                panic!("Error, probablemente estás leyendo el directorio equivocado");
-            }
-        };
-        let maptowork  = match maps.get(data_compare){
-            Some(working_map)=> working_map,
-            None => {
-                println!("No se encontró mapa deseado.");
-                continue;
-            }
-        };
+    recorrer_escenarios(map, |map, stats, scen_file| run_map_struct_save::<OpenType>(map, stats, scen_file));
+}
 
-        let map_dir = format!("maps/{}", maptowork);
-        let data_in_dir = format!("test_data/{}", scen_files);
-        *map = [[false; 2048]; 2048];
-        let (height, width) = read_map(map, &map_dir);
-        let data = read_lines(&data_in_dir);
-        let mut first_line = true;
-        for line in data{
-            if first_line {
-                first_line = false;
+//cada colección de mapas es una subcarpeta con el mismo nombre en maps/ y en test_data/
+//(ej. maps/Mazes/x.map y test_data/Mazes/x.map.scen)
+const MAPS_DIR: &str = "maps";
+const SCEN_DIR: &str = "test_data";
+
+//de cada .scen se corre 1 escenario de cada `paso`. Mazes trae 627.000 escenarios y cada búsqueda
+//tarda ~8 veces lo de DragonAges: completos sumarían ~130 h a la corrida. Con 1 de cada 40 quedan
+//15.675, repartidos en los 60 mapas y en todo el rango de largos. Las colecciones que no están acá van completas
+const MUESTREO: &[(&str, usize)] = &[("Mazes", 40)];
+
+fn paso_de(coleccion: &str) -> usize {
+    MUESTREO.iter().find(|(nombre, _)| *nombre == coleccion).map_or(1, |&(_, paso)| paso)
+}
+
+//carga cada mapa con escenarios y le pasa a `correr` sus escenarios (ya muestreados), uno por uno,
+//junto con "colección/archivo.scen", que es donde van sus resultados dentro de cada estructura
+fn recorrer_escenarios(map: &mut CustomMap, mut correr: impl FnMut(&CustomMap, MapStats, &str)) {
+    let mut colecciones: Vec<String> = read_folders(SCEN_DIR).into_iter()
+        .filter(|nombre| Path::new(SCEN_DIR).join(nombre).is_dir())
+        .collect();
+    colecciones.sort();
+    for coleccion in colecciones {
+        let maps = read_folders(&format!("{MAPS_DIR}/{coleccion}"));
+        let paso = paso_de(&coleccion);
+        for scen_file in read_folders(&format!("{SCEN_DIR}/{coleccion}")) {
+            let Some(map_name) = scen_file.strip_suffix(".scen") else {
+                panic!("{SCEN_DIR}/{coleccion}/{scen_file} no es un .scen, probablemente estás leyendo el directorio equivocado");
+            };
+            if !maps.contains(map_name) {
+                println!("No se encontró el mapa {MAPS_DIR}/{coleccion}/{map_name}.");
                 continue;
             }
-            let stats = decode_scen(line);
-            run_map_struct_save::<OpenType>(map, stats, &scen_files);
-            /*
-            let ouput_path = format!("generated_output/{}-{}_{}-{}_{}.png",
-                &scen_files,
-                stats.start.0,
-                stats.start.1,
-                stats.goal.0,
-                stats.goal.1
-            );
-            map_visualization::visualize_final_state(
-                map,
-                width, height,
-                &astar_data.open, &astar_data.close,
-                stats.start, stats.goal,
-                &astar_data.path,
-                4,
-                &ouput_path
-            );
-            */
+            *map = [[false; 2048]; 2048];
+            read_map(map, &format!("{MAPS_DIR}/{coleccion}/{map_name}"));
+            //la primera línea del .scen es la versión del formato
+            let escenarios = read_lines(&format!("{SCEN_DIR}/{coleccion}/{scen_file}"));
+            let destino = format!("{coleccion}/{scen_file}");
+            for line in escenarios.into_iter().skip(1).step_by(paso) {
+                correr(map, decode_scen(line), &destino);
+            }
+            println!("Finish map: {coleccion}/{map_name}");
         }
     }
 }
@@ -87,11 +84,7 @@ pub fn astar_diferent_structures(map:&mut CustomMap){
     let radix_elapsed = start_time.elapsed().as_secs();
     elapsed_to_min_secs("RadixHeap", radix_elapsed);
     let start_time = Instant::now();
-    test_astar_correctnes::<RadixAltOpen>(map);
-    let radix_alt_elapsed = start_time.elapsed().as_secs();
-    elapsed_to_min_secs("RadixAlt", radix_alt_elapsed);
-    let start_time = Instant::now();
-    test_astar_correctnes::<RadixAltRoundOpen>(map); // amplifica el f * 2^(20), redondea y luego a u64
+    test_astar_correctnes::<RadixAltRoundOpen>(map); // la clave común open_key(f): f * 2^18 redondeada
     let radix_alt_round_elapsed = start_time.elapsed().as_secs();
     elapsed_to_min_secs("RadixAltRound", radix_alt_round_elapsed);
     let start_time = Instant::now();
@@ -152,43 +145,15 @@ where OpenType: OpenList,
 }
 
 pub fn test_structur_per_map(map:&mut CustomMap){
-let maps = read_folders("maps");
-    let test_data = read_folders("test_data");
-    for scen_files in test_data{
-        let data_compare = match scen_files.strip_suffix(".scen"){
-            Some(data)=> {data}
-            None => {
-                panic!("Error, probablemente estás leyendo el directorio equivocado");
-            }
-        };
-        let maptowork  = match maps.get(data_compare){
-            Some(working_map)=> working_map,
-            None => {
-                println!("No se encontró mapa deseado.");
-                continue;
-            }
-        };
-
-        let map_dir = format!("maps/{}", maptowork);
-        let data_in_dir = format!("test_data/{}", scen_files);
-        *map = [[false; 2048]; 2048];
-        let (height, width) = read_map(map, &map_dir);
-        let data = read_lines(&data_in_dir);
-        let mut first_line = true;
-        for line in data{
-            if first_line {
-                first_line = false;
-                continue;
-            }
-            let stats = decode_scen(line);
-            run_map_struct_save::<BinaryHeapOpen>(map, stats, &scen_files);
-            run_map_struct_save::<RadixHeapOpen>(map, stats, &scen_files);
-            run_map_struct_save::<RadixAltOpen>(map, stats, &scen_files);
-            run_map_struct_save::<RadixAltRoundOpen>(map, stats, &scen_files);
-            run_map_struct_save::<VebOpen>(map, stats, &scen_files);
-            run_map_struct_save::<QuickHeapOpen>(map, stats, &scen_files);
-            run_map_struct_save::<QuickHeapScalarOpen>(map, stats, &scen_files); // el mismo QuickHeap sin SIMD
-
+    recorrer_escenarios(map, |map, stats, scen_file| {
+        run_map_struct_save::<BinaryHeapOpen>(map, stats, scen_file);
+        run_map_struct_save::<RadixHeapOpen>(map, stats, scen_file);
+        run_map_struct_save::<RadixAltRoundOpen>(map, stats, scen_file);
+        run_map_struct_save::<VebOpen>(map, stats, scen_file);
+        run_map_struct_save::<QuickHeapOpen>(map, stats, scen_file);
+        run_map_struct_save::<QuickHeapScalarOpen>(map, stats, scen_file); // el mismo QuickHeap sin SIMD
+    });
+    //para dibujar cada búsqueda (hay que traer astar_data y el ancho/alto que devuelve read_map):
             /*
             let ouput_path = format!("generated_output/{}-{}_{}-{}_{}.png",
                 &scen_files,
@@ -207,7 +172,4 @@ let maps = read_folders("maps");
                 &ouput_path
             );
             */
-        }
-        println!("Finish map: {}", data_compare);
-    }
 }

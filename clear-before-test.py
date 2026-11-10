@@ -11,8 +11,9 @@ if not test_res.is_dir():
 else:
     data_struct = sorted(folder for folder in test_res.iterdir() if folder.is_dir())
     for folder in data_struct:
-        #solo los .tsv que escribe el programa; la carpeta se mantiene porque create_stat_file la necesita
-        files = list(folder.glob("*.tsv"))
+        #solo los .tsv que escribe el programa, también los de las subcarpetas de cada colección
+        #(ej. binary-heap/Mazes); las carpetas se mantienen
+        files = list(folder.rglob("*.tsv"))
         for file in files:
             file.unlink()
         print(f"{folder.name}: {len(files)} archivos eliminados")
