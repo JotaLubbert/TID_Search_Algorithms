@@ -114,7 +114,7 @@ where OpenType: OpenList,
         octile_distance
     ).unwrap();
     let search_time = star_time.elapsed();
-    let finish = search_time.as_micros();
+    let finish = search_time.as_nanos();
 
     //la misma búsqueda con una open que solo repite lo grabado, sin ordenar nada:
     //lo que tarda de menos es lo que usó la open (ver open_time.rs)

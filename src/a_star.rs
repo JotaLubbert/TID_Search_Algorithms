@@ -9,6 +9,8 @@ type Distance = f64;
 const COSTO_CARDINAL: f64 = 1.0;
 const COSTO_DIAGONAL: f64 = std::f64::consts::SQRT_2;
 
+const CORRECTION: f64 = 1e-9;
+
 const MOVEMENT_OPTIONS: [(i32, i32, f64); 8] = [
     (1, 0, COSTO_CARDINAL),
     (-1, 0, COSTO_CARDINAL),
@@ -214,7 +216,7 @@ where
             let tentative_g = current_g + *cost;
             let existing_g = close.get(neighbor).map(|n| n.g).unwrap_or(f64::INFINITY);
 
-            if tentative_g < existing_g {
+            if tentative_g < existing_g - CORRECTION { // Corrects de real value ignoring floating  point noise.
                 let h = type_of_distance(*neighbor, goal);
                 let neighbor_node = SearchNode::new(*neighbor, tentative_g, h, Some(current.coords));
                 close.insert(*neighbor, neighbor_node);
