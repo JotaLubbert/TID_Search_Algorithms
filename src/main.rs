@@ -21,7 +21,7 @@ fn main() {
     // print!("{}ms", finish)
 
 
-    testing_functions::test_structur_per_map(&mut array);
+    testing_functions::correr_corridas(&mut array);
 
 
     // let mut total_time: u128 = 0;

@@ -132,3 +132,50 @@ impl<Open: OpenList> OpenList for Medido<Open> {
         self.open.nodes()
     }
 }
+
+//Envoltorio para la búsqueda limpia, la que da el tiempo total: deja pasar todo a la open, salvo
+//los tamaños que A* le pide al llegar a la meta (size_in_bytes y used_bytes), que devuelve en 0.
+//En el vEB calcularlos recorre todos sus grupos y su árbol, y ese recorrido quedaría dentro del
+//tiempo total, más largo mientras más grande la open: el vEB saldría más lento por medir su memoria.
+//Los tamaños se toman de la pasada con cronómetro, que hace la misma búsqueda y calcula esos
+//tamaños fuera de sus intervalos (ver run_map_struct_save en testing_functions.rs)
+pub struct SinTamanos<Open> {
+    open: Open,
+}
+
+impl<Open> SinTamanos<Open> {
+    //la open de adentro, por ejemplo para leer el máximo de memoria que midió Medido
+    pub fn inner(&self) -> &Open {
+        &self.open
+    }
+}
+
+impl<Open: OpenList> Default for SinTamanos<Open> {
+    fn default() -> Self {
+        Self { open: Open::default() }
+    }
+}
+
+impl<Open: OpenList> OpenList for SinTamanos<Open> {
+    const NAME: &'static str = Open::NAME;
+
+    fn insert(&mut self, node: SearchNode) {
+        self.open.insert(node);
+    }
+
+    fn pop_min(&mut self) -> Option<SearchNode> {
+        self.open.pop_min()
+    }
+
+    fn size_in_bytes(&self) -> usize {
+        0
+    }
+
+    fn used_bytes(&self) -> usize {
+        0
+    }
+
+    fn nodes(&self) -> impl Iterator<Item = &SearchNode> {
+        self.open.nodes()
+    }
+}
