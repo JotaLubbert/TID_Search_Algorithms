@@ -19,8 +19,9 @@ pub fn create_stat_file(
     open_peak_bytes: usize,
     execution_time: u128,
     //cuánto de la búsqueda se fue en la open, medido por resta (ver open_time.rs). En nanosegundos,
-    //y con signo: en caminos de pocos µs el ruido puede dejar la resta un poco bajo cero
-    open_time_ns: i64,
+    //y con signo: el ruido del equipo (hasta ~1 ms entre dos búsquedas idénticas) puede dejar bajo
+    //cero un camino suelto; los promedios sí valen, porque el ruido se cancela
+    open_time_ns: i128,
 ) {
     file_name.push_str(".tsv");
 

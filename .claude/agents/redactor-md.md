@@ -17,4 +17,6 @@ Estilo:
 - No inventes datos: usa solo los que te entregan o los que están en los archivos.
 - Al editar un documento existente, conserva su estructura y su tono y cambia solo lo necesario.
 
+Si el texto es para el informe final, sigue además `informe/guia/instrucciones_informe_final.md` (estructura de cinco secciones exigida por el profesor; todo en pasado, sin planificación ni "resultados esperados").
+
 Al terminar, responde en 5 líneas o menos qué cambiaste.

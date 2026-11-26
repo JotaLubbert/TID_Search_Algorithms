@@ -17,12 +17,6 @@ pub fn test_astar(map:&mut CustomMap, test_atempts: usize)->Vec<(u128, Vec<(u32,
     return end_test;
 }
 
-pub fn test_astar_correctnes<OpenType>(map:&mut CustomMap)
-where OpenType: OpenList,
-{
-    recorrer_escenarios(map, |map, stats, scen_file| run_map_struct_save::<OpenType>(map, stats, scen_file));
-}
-
 //cada colección de mapas es una subcarpeta con el mismo nombre en maps/ y en test_data/
 //(ej. maps/Mazes/x.map y test_data/Mazes/x.map.scen)
 const MAPS_DIR: &str = "maps";
@@ -30,7 +24,7 @@ const SCEN_DIR: &str = "test_data";
 
 //de cada .scen se corre 1 escenario de cada `paso`. Mazes trae 627.000 escenarios y cada búsqueda
 //tarda ~8 veces lo de DragonAges: completos sumarían ~130 h a la corrida. Con 1 de cada 40 quedan
-//15.675, repartidos en los 60 mapas y en todo el rango de largos. Las colecciones que no están acá van completas
+//15.698, repartidos en los 60 mapas y en todo el rango de largos. Las colecciones que no están acá van completas
 const MUESTREO: &[(&str, usize)] = &[("Mazes", 40)];
 
 fn paso_de(coleccion: &str) -> usize {
@@ -68,39 +62,6 @@ fn recorrer_escenarios(map: &mut CustomMap, mut correr: impl FnMut(&CustomMap, M
     }
 }
 
-fn elapsed_to_min_secs(name: &str,elapsed: u64){
-    let minutes = elapsed/60;
-    let seconds = elapsed % 60;
-    println!("Tiempo en ejecución de {name}: {minutes}min {seconds}s")
-}
-
-pub fn astar_diferent_structures(map:&mut CustomMap){
-    let start_time = Instant::now();
-    test_astar_correctnes::<BinaryHeapOpen>(map);
-    let binary_elapsed = start_time.elapsed().as_secs();
-    elapsed_to_min_secs("BinaryHeap", binary_elapsed);
-    let start_time = Instant::now();
-    test_astar_correctnes::<RadixHeapOpen>(map);
-    let radix_elapsed = start_time.elapsed().as_secs();
-    elapsed_to_min_secs("RadixHeap", radix_elapsed);
-    let start_time = Instant::now();
-    test_astar_correctnes::<RadixAltRoundOpen>(map); // la clave común open_key(f): f * 2^18 redondeada
-    let radix_alt_round_elapsed = start_time.elapsed().as_secs();
-    elapsed_to_min_secs("RadixAltRound", radix_alt_round_elapsed);
-    let start_time = Instant::now();
-    test_astar_correctnes::<VebOpen>(map);
-    let veb_elapsed = start_time.elapsed().as_secs();
-    elapsed_to_min_secs("vEB", veb_elapsed);
-    let start_time = Instant::now();
-    test_astar_correctnes::<QuickHeapOpen>(map);
-    let quick_elapsed = start_time.elapsed().as_secs();
-    elapsed_to_min_secs("QuickHeap", quick_elapsed);
-    let start_time = Instant::now();
-    test_astar_correctnes::<QuickHeapScalarOpen>(map);
-    let quick_scalar_elapsed = start_time.elapsed().as_secs();
-    elapsed_to_min_secs("QuickHeapScalar", quick_scalar_elapsed);
-}
-
 fn run_map_struct_save<OpenType>(map: &CustomMap, stats: MapStats, scen_files: &str)
 where OpenType: OpenList,
 {
@@ -119,6 +80,11 @@ where OpenType: OpenList,
     //la misma búsqueda con una open que solo repite lo grabado, sin ordenar nada:
     //lo que tarda de menos es lo que usó la open (ver open_time.rs)
     astar_data.open.preparar_repeticion();
+    //la tabla de nodos de la original (varios MB) ya no se usa: su tamaño quedó en close_bytes. Si
+    //siguiera viva, la repetición tendría que pedir memoria nueva al sistema y saldría más lenta solo
+    //por eso, lo que deja el tiempo de la open bajo su valor real (en una prueba, los caminos con
+    //tiempo de la open negativo bajaron de 2,4 % a 1,0 % al liberarla)
+    drop(std::mem::take(&mut astar_data.close));
     let star_time = Instant::now();
     let replay = a_star::<Repeticion, _>(
         stats.start,
@@ -129,8 +95,7 @@ where OpenType: OpenList,
     let replay_time = star_time.elapsed();
     //la repetición tiene que haber hecho exactamente el mismo trabajo; si no, la resta no vale
     assert_eq!(astar_data.expansions, replay.expansions, "la repetición no reprodujo la búsqueda de {}", OpenType::NAME);
-    let open_time_ns = search_time.as_nanos() as i64 - replay_time.as_nanos() as i64;
-
+    let open_time_ns = finish as i128 - replay_time.as_nanos() as i128;
     let file_name = format!("{}/{}", OpenType::NAME, scen_files);
     write_files::create_stat_file(
         file_name,
@@ -140,7 +105,7 @@ where OpenType: OpenList,
         &astar_data,
         astar_data.open.inner().peak_bytes(),
         finish,
-        open_time_ns
+        open_time_ns,
     );
 }
 

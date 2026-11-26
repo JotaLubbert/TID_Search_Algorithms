@@ -21,8 +21,8 @@ MAPS_TO_PLOT = ["arena2", "den312d", "hrt201n", "orz900d"]
 N_BINS = 20                # tramos de largo de camino en los gráficos por mapa
 MIN_PER_BIN = 5            # un tramo con menos escenarios no se dibuja
 OPTIMALITY_TOL = 1e-6      # el .scen trae la distancia esperada con 8 decimales
-#el tiempo se guarda en µs enteros: en caminos de pocos µs dos estructuras empatan o difieren
-#solo por el redondeo, así que el tiempo relativo se calcula únicamente desde este umbral
+#execution_time viene en ns (open_time_ns también). En caminos de pocos µs el ruido del equipo pesa
+#más que la diferencia entre estructuras, así que el tiempo relativo se calcula únicamente desde este umbral
 MIN_US_FOR_RATIO = 50
 #para el desglose por tamaño de la open: BinaryHeap reserva 64 bytes por nodo (la entrada
 #(clave, Reverse(seq), nodo) con su relleno) más los 32 de su struct (Vec de 24 y el contador seq,
@@ -209,9 +209,10 @@ def load_results():
         #un caché hecho antes de las colecciones no trae la columna y se descarta
         if "collection" in data.columns and \
                 set(data[["structure", "collection", "map"]].drop_duplicates().itertuples(index=False, name=None)) == on_disk:
-            return with_time_ratio(data)
+            return with_time_ratio(check_time_units(data))
 
     data = read_tsvs(structures)
+    check_time_units(data)
     #cada fila se empareja con la misma fila de la referencia: misma colección, mismo mapa, mismo escenario
     #(sin la colección, dos mapas con el mismo nombre en colecciones distintas se mezclarían)
     base_cols = ["start_x", "start_y", "goal_x", "goal_y", "actual_distance",
@@ -224,9 +225,9 @@ def load_results():
         bad = data.loc[~same_scenario, ["structure", "collection", "map", "row"]].head()
         raise ValueError(f"hay filas que no corresponden al mismo escenario en todas las estructuras:\n{bad}")
 
-    data["time_ms"] = data["execution_time"] / 1000
+    data["time_ms"] = data["execution_time"] / 1e6
     data["open_kb"] = data["open_bytes"] / 1024
-    data["us_per_expansion"] = data["execution_time"] / data["expansions"]
+    data["us_per_expansion"] = data["execution_time"] / 1e3 / data["expansions"]
     data["memory_ratio"] = data["open_bytes"] / data["open_bytes_base"]
     data["expansions_ratio"] = data["expansions"] / data["expansions_base"]
     data["error"] = (data["actual_distance"] - data["expected_distance"]).abs()
@@ -243,10 +244,20 @@ def scope_title():
     return "Todos los mapas" if SCOPE == GENERAL else f"Mapas de {SCOPE}"
 
 
+def check_time_units(data):
+    #execution_time pasó de µs a ns (commit 3842e50). Con TSV de antes, todos los tiempos saldrían
+    #1.000 veces más chicos sin avisar. La open es parte de la búsqueda, así que con las dos columnas
+    #en ns su suma no puede superar la del tiempo total; con execution_time en µs la supera ~200 veces
+    if "open_time_ns" in data.columns and data["open_time_ns"].sum() > data["execution_time"].sum():
+        raise ValueError("execution_time parece estar en µs (TSV de antes del cambio a ns): "
+                         "borra los resultados con clear-before-test.py y vuelve a correr las pruebas")
+    return data
+
+
 def with_time_ratio(data):
     #va fuera del caché para que cambiar el umbral no obligue a releer los TSV
     base = data["execution_time_base"]
-    data["time_ratio"] = data["execution_time"] / base.where(base >= MIN_US_FOR_RATIO)
+    data["time_ratio"] = data["execution_time"] / base.where(base >= MIN_US_FOR_RATIO * 1e3)
     return data
 
 
@@ -523,7 +534,7 @@ def plot_by_open(data, styles):
     fig.text(0.012, 0.905,
              f"Cada camino se ubica según el máximo de nodos que tuvo a la vez la open de {base_label}. Bajo 1× la estructura gana.\n"
              "Los tamaños grandes son pocos caminos, pero son los más largos y los que más tiempo toman.\n"
-             f"El tiempo relativo solo usa caminos donde {base_label} tardó al menos {MIN_US_FOR_RATIO} µs (más cortos, el redondeo a µs los empata).",
+             f"El tiempo relativo solo usa caminos donde {base_label} tardó al menos {MIN_US_FOR_RATIO} µs (en los más cortos, el ruido del equipo pesa más que la diferencia entre estructuras).",
              fontsize=9.5, color=INK["secondary"], linespacing=1.5)
     fig.tight_layout(rect=(0, 0, 1, 0.9), h_pad=2.4)
     apply_ratio_format(ax)
@@ -637,7 +648,7 @@ OPEN_PCT_COLUMNS = ["open_pct", "open_pct_ic95"]
 def open_time_table(data, styles):
     #promedio por camino; el porcentaje es el cociente de los promedios, o sea, el del tiempo total
     #(pesan más los caminos largos, que son los que más tardan)
-    df = data.assign(open_ms=data["open_time_ns"] / 1e6, total_ms=data["execution_time"] / 1e3)  # µs y ns a ms
+    df = data.assign(open_ms=data["open_time_ns"] / 1e6, total_ms=data["execution_time"] / 1e6)  # ns a ms
     g = df.groupby("structure")
     n = g.size()
     table = pd.DataFrame({
@@ -713,9 +724,9 @@ def summarize_open_time(data, styles, levels):
     #todos los caminos juntos
     table = open_time_table(data, styles)
     open_table_for_output(table, styles).to_csv(OUT_DIR / "tiempo_open.csv")
-    per_map = data.groupby(["map", "structure"]).agg(total_us=("execution_time", "sum"),
+    per_map = data.groupby(["map", "structure"]).agg(total_ns=("execution_time", "sum"),
                                                       open_ns=("open_time_ns", "sum"))
-    per_map["open_pct"] = (per_map["open_ns"] / 1e3 / per_map["total_us"] * 100).round(2)
+    per_map["open_pct"] = (per_map["open_ns"] / per_map["total_ns"] * 100).round(2)
     per_map.to_csv(OUT_DIR / "tiempo_open_por_mapa.csv")
     n_paths = table["caminos"].max()
     print(f"\nTiempo de la open por resta ({fmt_number(n_paths)} caminos de {n_maps} mapas)")
